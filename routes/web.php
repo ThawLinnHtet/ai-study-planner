@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\EnsureOnboarded;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
@@ -12,9 +13,9 @@ Route::get('/', function () {
 
 Route::get('dashboard', function () {
     return Inertia::render('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+})->middleware(['auth', 'verified', EnsureOnboarded::class])->name('dashboard');
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function () {
     Route::get('study-planner', function () {
         return Inertia::render('study-planner');
     })->name('study-planner');
@@ -32,4 +33,5 @@ Route::middleware(['auth', 'verified'])->group(function () {
     })->name('progress');
 });
 
+require __DIR__.'/onboarding.php';
 require __DIR__.'/settings.php';

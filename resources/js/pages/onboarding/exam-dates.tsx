@@ -1,0 +1,95 @@
+import { Head, useForm } from '@inertiajs/react';
+import Heading from '@/components/heading';
+import InputError from '@/components/input-error';
+import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import AppLayout from '@/layouts/app-layout';
+import type { BreadcrumbItem } from '@/types';
+
+type Subject = {
+    id: number;
+    name: string;
+    exam_date: string | null;
+};
+
+const breadcrumbs: BreadcrumbItem[] = [
+    {
+        title: 'Onboarding',
+        href: '/onboarding/exam-dates',
+    },
+];
+
+export default function OnboardingExamDates({
+    subjects,
+}: {
+    subjects: Subject[];
+}) {
+    const form = useForm<{ exam_dates: Record<string, string | null> }>({
+        exam_dates: Object.fromEntries(
+            subjects.map((s) => [String(s.id), s.exam_date]),
+        ),
+    });
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Onboarding - Exam dates" />
+
+            <div className="mx-auto w-full max-w-2xl p-6">
+                <Heading
+                    title="Exam dates"
+                    description="When are your exams? This helps our AI prioritize your study schedule."
+                />
+
+                <form
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        form.post('/onboarding/exam-dates');
+                    }}
+                >
+                    <div className="space-y-6">
+                        <div className="space-y-4">
+                            {subjects.map((subject) => (
+                                <div key={subject.id} className="grid gap-2">
+                                    <Label
+                                        htmlFor={`subject-${subject.id}`}
+                                    >
+                                        {subject.name}
+                                    </Label>
+
+                                    <DatePicker
+                                        id={`subject-${subject.id}`}
+                                        value={
+                                            form.data.exam_dates[
+                                            String(subject.id)
+                                            ]
+                                        }
+                                        onChange={(value) =>
+                                            form.setData('exam_dates', {
+                                                ...form.data.exam_dates,
+                                                [String(subject.id)]: value,
+                                            })
+                                        }
+                                        placeholder="Pick an exam date"
+                                    />
+                                    <InputError
+                                        message={
+                                            (form.errors as any)?.exam_dates?.[
+                                            String(subject.id)
+                                            ]
+                                        }
+                                    />
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="flex justify-end">
+                            <Button disabled={form.processing}>Next</Button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </AppLayout>
+    );
+}
