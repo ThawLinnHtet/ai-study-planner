@@ -7,24 +7,27 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-class Subject extends Model
+class Quiz extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
         'user_id',
-        'name',
-        'slug',
+        'subject_id',
+        'study_plan_id',
+        'title',
         'description',
-        'exam_date',
-        'color',
-        'icon',
+        'difficulty',
+        'total_questions',
+        'questions',
+        'settings',
     ];
 
     protected function casts(): array
     {
         return [
-            'exam_date' => 'date',
+            'questions' => 'array',
+            'settings' => 'array',
         ];
     }
 
@@ -33,18 +36,18 @@ class Subject extends Model
         return $this->belongsTo(User::class);
     }
 
-    public function studyPlans(): HasMany
+    public function subject(): BelongsTo
     {
-        return $this->hasMany(StudyPlan::class);
+        return $this->belongsTo(Subject::class);
     }
 
-    public function studySessions(): HasMany
+    public function studyPlan(): BelongsTo
     {
-        return $this->hasMany(StudySession::class);
+        return $this->belongsTo(StudyPlan::class);
     }
 
-    public function quizzes(): HasMany
+    public function results(): HasMany
     {
-        return $this->hasMany(Quiz::class);
+        return $this->hasMany(QuizResult::class);
     }
 }

@@ -1,4 +1,5 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -18,10 +19,20 @@ export default function OnboardingAvailability() {
     const { auth } = usePage<SharedData>().props;
 
     const form = useForm({
-        daily_study_hours: (auth.user as any)?.daily_study_hours ?? '',
+        daily_study_hours: (auth.user as any)?.daily_study_hours ?? 2,
         learning_style: (auth.user as any)?.learning_style ?? '',
         timezone: (auth.user as any)?.timezone ?? '',
     });
+
+    useEffect(() => {
+        if (form.data.timezone) return;
+        if (typeof window === 'undefined') return;
+
+        const detectedTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const tz = detectedTz === 'Asia/Rangoon' ? 'Asia/Yangon' : detectedTz;
+
+        if (tz) form.setData('timezone', tz);
+    }, [form.data.timezone]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>

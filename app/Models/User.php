@@ -52,11 +52,38 @@ class User extends Authenticatable
             'subjects' => 'array',
             'exam_dates' => 'array',
             'onboarding_step' => 'integer',
+            'learning_style' => 'array',
+            'subject_difficulties' => 'array',
         ];
     }
 
     public function subjectRecords(): HasMany
     {
         return $this->hasMany(Subject::class);
+    }
+
+    public function studyPlans(): HasMany
+    {
+        return $this->hasMany(StudyPlan::class);
+    }
+
+    public function studySessions(): HasMany
+    {
+        return $this->hasMany(StudySession::class);
+    }
+
+    public function quizzes(): HasMany
+    {
+        return $this->hasMany(Quiz::class);
+    }
+
+    public function quizResults(): HasMany
+    {
+        return $this->hasMany(QuizResult::class);
+    }
+
+    public function aiMessages(): HasMany
+    {
+        return $this->hasMany(AiMessage::class);
     }
 }

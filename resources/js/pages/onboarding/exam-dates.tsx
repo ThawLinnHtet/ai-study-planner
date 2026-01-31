@@ -28,7 +28,7 @@ export default function OnboardingExamDates({
 }) {
     const form = useForm<{ exam_dates: Record<string, string | null> }>({
         exam_dates: Object.fromEntries(
-            subjects.map((s) => [String(s.id), s.exam_date]),
+            subjects.map((s) => [s.name, s.exam_date]),
         ),
     });
 
@@ -62,21 +62,21 @@ export default function OnboardingExamDates({
                                         id={`subject-${subject.id}`}
                                         value={
                                             form.data.exam_dates[
-                                            String(subject.id)
+                                            subject.name
                                             ]
                                         }
                                         onChange={(value) =>
                                             form.setData('exam_dates', {
                                                 ...form.data.exam_dates,
-                                                [String(subject.id)]: value,
+                                                [subject.name]: value,
                                             })
                                         }
                                         placeholder="Pick an exam date"
                                     />
                                     <InputError
                                         message={
-                                            (form.errors as any)?.exam_dates?.[
-                                            String(subject.id)
+                                            form.errors[
+                                            `exam_dates.${subject.name}` as any
                                             ]
                                         }
                                     />

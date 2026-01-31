@@ -11,14 +11,19 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-Route::get('dashboard', function () {
-    return Inertia::render('dashboard');
-})->middleware(['auth', 'verified', EnsureOnboarded::class])->name('dashboard');
+Route::get('dashboard', [\App\Http\Controllers\StudyPlanController::class, 'dashboard'])
+    ->middleware(['auth', 'verified', EnsureOnboarded::class])
+    ->name('dashboard');
 
 Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function () {
-    Route::get('study-planner', function () {
-        return Inertia::render('study-planner');
-    })->name('study-planner');
+    Route::get('study-planner', [\App\Http\Controllers\StudyPlanController::class, 'index'])
+        ->name('study-planner');
+
+    Route::post('study-plan/rebalance', [\App\Http\Controllers\StudyPlanController::class, 'rebalance'])
+        ->name('study-plan.rebalance');
+
+    Route::post('study-plan/toggle-session', [\App\Http\Controllers\StudyPlanController::class, 'toggleSession'])
+        ->name('study-plan.toggle-session');
 
     Route::get('ai-tutor', function () {
         return Inertia::render('ai-tutor');

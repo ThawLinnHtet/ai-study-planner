@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StudyPlanService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -10,6 +11,13 @@ use Inertia\Response;
 class OnboardingController extends Controller
 {
     private const TOTAL_STEPS = 6;
+
+    protected StudyPlanService $studyPlanService;
+
+    public function __construct(StudyPlanService $studyPlanService)
+    {
+        $this->studyPlanService = $studyPlanService;
+    }
 
     public function show(Request $request): Response
     {
@@ -58,16 +66,30 @@ class OnboardingController extends Controller
 
         if ($step === 2) {
             $data = $request->validate([
-                'subjects' => ['required', 'array', 'min:1', 'max:30'],
-                'subjects.*' => ['required', 'string', 'max:100'],
+                'subjects' => ['required', 'array', 'min:1', 'max:15'],
+                'subjects.*' => ['required', 'string', 'min:2', 'max:100'],
+            ], [
+                'subjects.max' => 'You can select a maximum of 15 subjects.',
+                'subjects.*.min' => 'Subject names must be at least 2 characters long.',
             ]);
 
             $subjects = collect($data['subjects'])
                 ->map(fn (string $s) => trim($s))
                 ->filter(fn (string $s) => $s !== '')
-                ->unique()
+                // Filter out subjects that are only numbers or special characters
+                ->filter(fn (string $s) => preg_match('/[a-zA-Z]/', $s))
+                // Normalize to Title Case for Neuron AI
+                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, "UTF-8"))
+                // Remove duplicates (case-insensitive)
+                ->unique(fn (string $s) => mb_strtolower($s, 'UTF-8'))
                 ->values()
                 ->all();
+
+            if (empty($subjects)) {
+                return back()->withErrors([
+                    'subjects' => 'Please add at least one valid subject.',
+                ]);
+            }
 
             $user->forceFill([
                 'subjects' => $subjects,
@@ -80,11 +102,31 @@ class OnboardingController extends Controller
         if ($step === 3) {
             $data = $request->validate([
                 'exam_dates' => ['required', 'array'],
-                'exam_dates.*' => ['nullable', 'date'],
+                'exam_dates.*' => [
+                    'nullable',
+                    'date',
+                    'after_or_equal:today',
+                    'before:' . now()->addYears(5)->format('Y-m-d'),
+                ],
+                'subject_difficulties' => ['nullable', 'array'],
+                'subject_difficulties.*' => ['integer', 'min:1', 'max:3'],
+            ], [
+                'exam_dates.*.after_or_equal' => 'Exam dates must be in the future.',
+                'exam_dates.*.before' => 'Exam dates must be within the next 5 years.',
             ]);
 
+            $subjects = $user->subjects ?? [];
+            $examDates = collect($data['exam_dates'] ?? [])
+                ->filter(fn ($date, $subject) => in_array($subject, $subjects))
+                ->all();
+
+            $difficulties = collect($data['subject_difficulties'] ?? [])
+                ->filter(fn ($diff, $subject) => in_array($subject, $subjects))
+                ->all();
+
             $user->forceFill([
-                'exam_dates' => $data['exam_dates'],
+                'exam_dates' => $examDates,
+                'subject_difficulties' => $difficulties,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 4),
             ])->save();
 
@@ -93,11 +135,25 @@ class OnboardingController extends Controller
 
         if ($step === 4) {
             $data = $request->validate([
-                'daily_study_hours' => ['required', 'integer', 'min:1', 'max:24'],
+                'daily_study_hours' => [
+                    'nullable',
+                    'integer',
+                    'min:1',
+                    'max:16',
+                ],
+                'productivity_peak' => [
+                    'nullable',
+                    'string',
+                    'in:morning,afternoon,evening,night',
+                ],
+            ], [
+                'daily_study_hours.max' => 'Please enter a realistic study time (maximum 16 hours per day).',
+                'daily_study_hours.min' => 'Please enter at least 1 hour per day.',
             ]);
 
             $user->forceFill([
-                'daily_study_hours' => $data['daily_study_hours'],
+                'daily_study_hours' => $data['daily_study_hours'] ?? 2,
+                'productivity_peak' => $data['productivity_peak'] ?? 'morning',
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 5),
             ])->save();
 
@@ -106,15 +162,21 @@ class OnboardingController extends Controller
 
         if ($step === 5) {
             $data = $request->validate([
-                'learning_style' => ['required', 'string', 'max:50'],
-                'study_goal' => ['required', 'string', 'max:255'],
-                'timezone' => ['nullable', 'string', 'max:100'],
+                'learning_style' => ['required', 'array', 'min:1'],
+                'learning_style.*' => ['string', 'in:visual,auditory,reading,kinesthetic'],
+                'study_goal' => ['required', 'string', 'min:3', 'max:255'],
+                'timezone' => ['nullable', 'string', 'timezone:all'],
             ]);
+
+            $timezone = $data['timezone'] ?? null;
+            if ($timezone === 'Asia/Rangoon') {
+                $timezone = 'Asia/Yangon';
+            }
 
             $user->forceFill([
                 'learning_style' => $data['learning_style'],
                 'study_goal' => $data['study_goal'],
-                'timezone' => $data['timezone'] ?? null,
+                'timezone' => $timezone,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 6),
             ])->save();
 
@@ -123,12 +185,23 @@ class OnboardingController extends Controller
 
         $request->validate([
             'confirm' => ['required', 'boolean', 'accepted'],
+        ], [
+            'confirm.accepted' => 'Please confirm that your details are correct before finishing.',
         ]);
 
         $user->forceFill([
             'onboarding_completed' => true,
             'onboarding_step' => self::TOTAL_STEPS,
         ])->save();
+
+        // Generate initial study plan using the service
+        try {
+            $this->studyPlanService->generateInitialPlan($user);
+        } catch (\Exception $e) {
+            // Log or handle error - we don't want to break the onboarding completion
+            // if AI fails, but user should be notified later or plan generated via queue.
+            logger()->error('Failed to generate initial study plan: ' . $e->getMessage());
+        }
 
         return redirect()->route('dashboard');
     }
