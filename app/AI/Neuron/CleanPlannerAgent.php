@@ -9,7 +9,7 @@ use NeuronAI\Chat\Messages\UserMessage;
 use NeuronAI\Providers\AIProviderInterface;
 use NeuronAI\SystemPrompt;
 
-class PlannerAgent extends Agent
+class CleanPlannerAgent extends Agent
 {
     protected function provider(): AIProviderInterface
     {
@@ -43,6 +43,49 @@ class PlannerAgent extends Agent
     protected function getOutputClass(): string
     {
         return PlannerOutput::class;
+    }
+
+    /**
+     * Clean AI response by removing markdown formatting
+     */
+    protected function cleanResponse(string $response): string
+    {
+        // Remove ```json and ``` markdown wrappers
+        $response = preg_replace('/^```json\s*/', '', $response);
+        $response = preg_replace('/```\s*$/', '', $response);
+        
+        // Trim whitespace
+        return trim($response);
+    }
+
+    /**
+     * Override structured method to clean response before parsing
+     */
+    public function structured(\NeuronAI\Chat\Messages\Message|array $messages, ?string $class = null, int $maxRetries = 1): mixed
+    {
+        // Get the raw response first
+        $provider = $this->provider();
+        $response = $provider->chat(is_array($messages) ? $messages : [$messages]);
+        $content = $this->cleanResponse($response->getContent());
+        
+        // Parse the cleaned JSON
+        $data = json_decode($content, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw new \Exception('Failed to parse AI response: ' . json_last_error_msg() . '. Content: ' . $content);
+        }
+        
+        // Map to the output class
+        $outputClass = $class ?: $this->getOutputClass();
+        $output = new $outputClass();
+        
+        // Fill the output object
+        foreach ($data as $key => $value) {
+            if (property_exists($output, $key)) {
+                $output->$key = $value;
+            }
+        }
+        
+        return $output;
     }
 
     /**
@@ -142,6 +185,7 @@ CRITICAL REQUIREMENTS:
 5. Each session MUST have: subject (string), topic (string), duration_minutes (integer), focus_level (low|medium|high)
 6. Do NOT wrap the schedule in a numeric array
 7. Generate NEW topics/chapters progressing from where the previous week left off
+8. Return ONLY the JSON object, no markdown formatting, no explanations
 
 Example format:
 {

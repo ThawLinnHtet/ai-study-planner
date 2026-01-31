@@ -31,6 +31,7 @@ class OptimizerAgent extends Agent
                 'The optimized_schedule MUST use day names (Monday, Tuesday, etc.) as keys.',
                 'Each session in the schedule MUST be an object, never a string.',
                 'Maintain the exact structure of the original schedule while re-balancing topics.',
+                'Duration for each session MUST be provided in minutes as "duration_minutes" (integer).',
                 'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All optimizations must apply to Today and the future.'
             ]
         );

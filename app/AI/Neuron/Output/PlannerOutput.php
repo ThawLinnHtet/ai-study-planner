@@ -19,19 +19,11 @@ class Session
     public string $focus_level;
 }
 
-class DayPlan
-{
-    /** @var \App\AI\Neuron\Output\Session[] */
-    #[SchemaProperty(description: 'List of study sessions for the day', required: true)]
-    public array $sessions;
-}
-
 class PlannerOutput
 {
-    /** @var array<string, \App\AI\Neuron\Output\DayPlan> */
     #[SchemaProperty(
         title: 'Weekly Schedule',
-        description: 'Map of day names (Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday) to their respective plans. Keys MUST be full English day names.',
+        description: 'Map of day names (Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday) to their respective session lists. Keys MUST be full English day names and values MUST be arrays of session objects.',
         required: true
     )]
     public array $schedule;

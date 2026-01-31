@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/react';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 
 interface Session {
     subject: string;
@@ -76,12 +76,26 @@ export default function Dashboard({ plan, completedToday }: Props) {
         );
     }
 
+    const getSubjectDisplay = (s: { subject?: string; topic?: string } | any) => {
+        if (!s) return 'Study Session';
+        const v = typeof s.subject === 'string' ? s.subject : s.subject?.subject;
+        const out = v ?? 'Study Session';
+        return out === '[object Object]' || out === 'undefined' ? 'Study Session' : out;
+    };
+    const getTopicDisplay = (s: { topic?: string } | any) => {
+        if (!s) return '';
+        const v = typeof s.topic === 'string' ? s.topic : s.topic?.topic;
+        if (v == null) return '';
+        const str = String(v);
+        return str === '[object Object]' ? '' : str.slice(0, 120);
+    };
+
     const todayName = format(new Date(), 'EEEE');
     const rawSchedule = plan?.generated_plan?.schedule || (plan?.generated_plan as any)?.optimized_schedule || {};
 
-    // Check if today is within plan range
-    const planStart = startOfDay(parseISO(plan.starts_on));
-    const planEnd = startOfDay(parseISO(plan.ends_on));
+    // Check if today is within plan range (guard against null dates)
+    const planStart = plan.starts_on ? startOfDay(parseISO(plan.starts_on)) : startOfDay(new Date());
+    const planEnd = plan.ends_on ? startOfDay(parseISO(plan.ends_on)) : startOfDay(new Date());
     const today = startOfDay(new Date());
     const isWithinRange = today >= planStart && today <= planEnd;
 
@@ -91,24 +105,26 @@ export default function Dashboard({ plan, completedToday }: Props) {
 
     // 2. Extract and sanitize sessions
     const rawSessions = dayData?.sessions || (Array.isArray(dayData) ? dayData : []);
-    const todaySessions: Session[] = rawSessions.map((s: any) => {
-        if (typeof s === 'string') {
-            // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
-            const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
+    const todaySessions: Session[] = rawSessions
+        .filter((s: any) => s != null)
+        .map((s: any) => {
+            if (typeof s === 'string') {
+                // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
+                const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
 
-            // Extract subject (text before first paren or dash)
-            const subjectMatch = cleanContent.match(/^([^(\-]+)/);
-            const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
+                // Extract subject (text before first paren or dash)
+                const subjectMatch = cleanContent.match(/^([^(\-]+)/);
+                const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
 
-            return {
-                subject: subject,
-                topic: cleanContent.trim(),
-                duration_minutes: 60,
-                focus_level: 'medium'
-            };
-        }
-        return s;
-    });
+                return {
+                    subject: subject,
+                    topic: cleanContent.trim(),
+                    duration_minutes: 60,
+                    focus_level: 'medium'
+                };
+            }
+            return s;
+        });
     const totalMinutes = todaySessions.reduce((acc, s) => acc + s.duration_minutes, 0);
     const completedCount = completedToday.length;
     const progressPercent = todaySessions.length > 0
@@ -124,9 +140,11 @@ export default function Dashboard({ plan, completedToday }: Props) {
         let dayData: any = isInRange ? (rawSchedule[dayName] || Object.values(rawSchedule).find((v: any) => v[dayName])) : null;
         if (dayData && dayData[dayName]) dayData = dayData[dayName];
 
-        const sessions = (dayData?.sessions || (Array.isArray(dayData) ? dayData : [])).map((s: any) =>
-            typeof s === 'string' ? { subject: s.split(':')[0] } : s
-        );
+        const sessions = (dayData?.sessions || (Array.isArray(dayData) ? dayData : [])).map((s: any) => {
+            if (s == null) return { subject: 'Study Session' };
+            if (typeof s === 'string') return { subject: s.split(':')[0].trim() };
+            return s;
+        });
 
         return {
             date,
@@ -167,7 +185,7 @@ export default function Dashboard({ plan, completedToday }: Props) {
                             <Progress value={progressPercent} className="h-2" />
                             <div className="flex justify-between text-sm text-muted-foreground">
                                 <span>{completedCount} of {todaySessions.length} sessions done</span>
-                                <span>{totalMinutes} mins total</span>
+                                <span>{formatDuration(totalMinutes)} total</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -178,7 +196,10 @@ export default function Dashboard({ plan, completedToday }: Props) {
                             <CardDescription>Next Session</CardDescription>
                             <CardTitle className="flex items-center gap-2">
                                 <Clock className="w-5 h-5 text-primary" />
-                                {todaySessions.find((_, i) => i >= completedCount)?.subject || "Done for today!"}
+                                {(() => {
+                                    const next = todaySessions.find((_, i) => i >= completedCount);
+                                    return next ? getSubjectDisplay(next) : 'Done for today!';
+                                })()}
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
@@ -235,12 +256,14 @@ export default function Dashboard({ plan, completedToday }: Props) {
                                                 )}
                                                 <div className="flex-1 min-w-0">
                                                     <h4 className={`font-bold truncate ${isDone ? 'line-through' : ''}`}>
-                                                        {session.subject}
+                                                        {getSubjectDisplay(session)}
                                                     </h4>
-                                                    <p className="text-xs text-muted-foreground truncate">{session.topic}</p>
+                                                    <p className="text-xs text-muted-foreground truncate">
+                                                        {getTopicDisplay(session)}
+                                                    </p>
                                                 </div>
                                                 <Badge variant="outline" className="text-[10px]">
-                                                    {session.duration_minutes}m
+                                                    {formatDuration(session.duration_minutes)}
                                                 </Badge>
                                             </CardContent>
                                         </Card>
@@ -277,7 +300,7 @@ export default function Dashboard({ plan, completedToday }: Props) {
                                             {day.sessions.length > 0 ? (
                                                 day.sessions.map((s, i) => (
                                                     <span key={i} className="text-[11px] bg-background px-2 py-0.5 rounded border text-foreground/80">
-                                                        {s.subject}
+                                                        {getSubjectDisplay(s)}
                                                     </span>
                                                 ))
                                             ) : (

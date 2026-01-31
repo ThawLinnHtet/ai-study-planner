@@ -38,7 +38,9 @@ class OnboardingController extends Controller
             'onboarding' => [
                 'subjects' => $user->subjects ?? [],
                 'exam_dates' => $user->exam_dates ?? [],
+                'subject_difficulties' => $user->subject_difficulties ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
+                'productivity_peak' => $user->productivity_peak,
                 'learning_style' => $user->learning_style,
                 'study_goal' => $user->study_goal,
                 'timezone' => $user->timezone,
@@ -100,6 +102,14 @@ class OnboardingController extends Controller
         }
 
         if ($step === 3) {
+            // Normalize empty exam date strings to null so validation accepts them
+            $examDatesInput = $request->input('exam_dates', []);
+            if (is_array($examDatesInput)) {
+                $request->merge([
+                    'exam_dates' => collect($examDatesInput)->map(fn ($v) => $v === '' ? null : $v)->all(),
+                ]);
+            }
+
             $data = $request->validate([
                 'exam_dates' => ['required', 'array'],
                 'exam_dates.*' => [
@@ -109,19 +119,22 @@ class OnboardingController extends Controller
                     'before:' . now()->addYears(5)->format('Y-m-d'),
                 ],
                 'subject_difficulties' => ['nullable', 'array'],
-                'subject_difficulties.*' => ['integer', 'min:1', 'max:3'],
+                'subject_difficulties.*' => ['nullable', 'integer', 'min:1', 'max:3'],
             ], [
                 'exam_dates.*.after_or_equal' => 'Exam dates must be in the future.',
                 'exam_dates.*.before' => 'Exam dates must be within the next 5 years.',
             ]);
 
             $subjects = $user->subjects ?? [];
+            // Keep only subjects that have a non-empty date set (do not store null in DB)
             $examDates = collect($data['exam_dates'] ?? [])
-                ->filter(fn ($date, $subject) => in_array($subject, $subjects))
+                ->filter(fn ($date, $subject) => in_array($subject, $subjects) && $date !== null && $date !== '')
                 ->all();
 
             $difficulties = collect($data['subject_difficulties'] ?? [])
                 ->filter(fn ($diff, $subject) => in_array($subject, $subjects))
+                ->map(fn ($d) => is_numeric($d) ? (int) max(1, min(3, (int) $d)) : null)
+                ->filter(fn ($d) => $d !== null)
                 ->all();
 
             $user->forceFill([

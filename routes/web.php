@@ -25,6 +25,8 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
     Route::post('study-plan/toggle-session', [\App\Http\Controllers\StudyPlanController::class, 'toggleSession'])
         ->name('study-plan.toggle-session');
 
+
+
     Route::get('ai-tutor', function () {
         return Inertia::render('ai-tutor');
     })->name('ai-tutor');

@@ -31,8 +31,12 @@ class StudyPlanController extends Controller
             ->where('started_at', '>=', now()->startOfDay())
             ->get();
 
+        $plan = $activePlan !== null
+            ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
+            : null;
+
         return Inertia::render('dashboard', [
-            'plan' => $activePlan,
+            'plan' => $plan,
             'completedToday' => $completedSessions,
         ]);
     }
@@ -51,8 +55,12 @@ class StudyPlanController extends Controller
             ->where('started_at', '>=', now()->startOfWeek())
             ->get();
 
+        $plan = $activePlan !== null
+            ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
+            : null;
+
         return Inertia::render('study-planner', [
-            'plan' => $activePlan,
+            'plan' => $plan,
             'completedSessions' => $recentSessions,
         ]);
     }
@@ -103,4 +111,6 @@ class StudyPlanController extends Controller
 
         return back();
     }
+
+
 }

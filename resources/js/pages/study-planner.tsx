@@ -11,7 +11,9 @@ import {
     ChevronLeft,
     ChevronRight,
     RefreshCw,
-    AlertCircle
+    AlertCircle,
+    Settings,
+    Sliders
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import {
@@ -23,7 +25,7 @@ import {
     parseISO,
     startOfDay
 } from 'date-fns';
-import { cn } from '@/lib/utils';
+import { cn, formatDuration } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -89,6 +91,8 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
 
     const rebalanceForm = useForm({});
 
+
+
     const weekDays = useMemo(() => {
         return DAYS.map((day, index) => {
             const date = addDays(weekStart, index);
@@ -102,6 +106,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
 
     const isCompleted = (date: Date, subject: string, topic: string) => {
         return completedSessions.some(session => {
+            if (!session.started_at) return false;
             const sessionDate = startOfDay(parseISO(session.started_at));
             const targetDate = startOfDay(date);
             return isSameDay(sessionDate, targetDate) &&
@@ -114,9 +119,9 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
         const completed = isCompleted(date, session.subject, session.topic);
 
         form.setData({
-            subject: session.subject,
-            topic: session.topic,
-            duration_minutes: session.duration_minutes,
+            subject: getSubjectDisplay(session),
+            topic: getTopicDisplay(session),
+            duration_minutes: session.duration_minutes ?? 60,
             started_at: format(date, "yyyy-MM-dd HH:mm:ss"),
             status: completed ? 'pending' : 'completed'
         });
@@ -152,9 +157,9 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
     const currentDayName = format(selectedDate, 'EEEE');
     const rawSchedule = plan.generated_plan.schedule || (plan.generated_plan as any).optimized_schedule || {};
 
-    // Check if the selected date is within the plan's life span
-    const planStart = startOfDay(parseISO(plan.starts_on));
-    const planEnd = startOfDay(parseISO(plan.ends_on));
+    // Check if the selected date is within the plan's life span (guard against null dates)
+    const planStart = plan.starts_on ? startOfDay(parseISO(plan.starts_on)) : startOfDay(selectedDate);
+    const planEnd = plan.ends_on ? startOfDay(parseISO(plan.ends_on)) : startOfDay(selectedDate);
     const targetDate = startOfDay(selectedDate);
     const isWithinRange = targetDate >= planStart && targetDate <= planEnd;
 
@@ -166,24 +171,40 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
 
     // 3. Extract sessions and handle raw strings if AI ignored the object structure
     const rawSessions = dayData?.sessions || (Array.isArray(dayData) ? dayData : []);
-    const todaySessions: Session[] = rawSessions.map((s: any) => {
-        if (typeof s === 'string') {
-            // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
-            const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
+    const todaySessions: Session[] = rawSessions
+        .filter((s: any) => s != null)
+        .map((s: any) => {
+            if (typeof s === 'string') {
+                // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
+                const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
 
-            // Extract subject (text before first paren or dash)
-            const subjectMatch = cleanContent.match(/^([^(\-]+)/);
-            const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
+                // Extract subject (text before first paren or dash)
+                const subjectMatch = cleanContent.match(/^([^(\-]+)/);
+                const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
 
-            return {
-                subject: subject,
-                topic: cleanContent.trim(),
-                duration_minutes: 60,
-                focus_level: 'medium'
-            };
-        }
-        return s;
-    });
+                return {
+                    subject: subject,
+                    topic: cleanContent.trim(),
+                    duration_minutes: 60,
+                    focus_level: 'medium'
+                };
+            }
+            return s;
+        });
+
+    const getSubjectDisplay = (s: Session | any) => {
+        if (!s) return 'Study Session';
+        const v = typeof s.subject === 'string' ? s.subject : s.subject?.subject;
+        const out = v ?? 'Study Session';
+        return out === '[object Object]' || out === 'undefined' ? 'Study Session' : String(out);
+    };
+    const getTopicDisplay = (s: Session | any) => {
+        if (!s) return '';
+        const v = typeof s.topic === 'string' ? s.topic : s.topic?.topic;
+        if (v == null) return '';
+        const str = String(v);
+        return str === '[object Object]' ? '' : str.slice(0, 200);
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -255,10 +276,12 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                         {todaySessions.length > 0 ? (
                             <div className="space-y-4">
                                 {todaySessions.map((session, idx) => {
-                                    const done = isCompleted(selectedDate, session.subject, session.topic);
+                                    const subj = getSubjectDisplay(session);
+                                    const top = getTopicDisplay(session);
+                                    const done = isCompleted(selectedDate, subj, top);
                                     return (
                                         <Card
-                                            key={`${session.subject}-${session.topic}-${idx}`}
+                                            key={`${subj}-${top}-${idx}`}
                                             className={cn(
                                                 "transition-all border-l-4 overflow-hidden",
                                                 session.focus_level === 'high' ? "border-l-destructive" :
@@ -282,21 +305,21 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 mb-1">
                                                             <h4 className={cn("font-bold text-lg truncate", done && "line-through")}>
-                                                                {session.subject}
+                                                                {subj}
                                                             </h4>
                                                             <Badge variant="secondary" className="text-[10px] h-5">
-                                                                {session.focus_level.toUpperCase()}
+                                                                {(session.focus_level ?? 'medium').toUpperCase()}
                                                             </Badge>
                                                         </div>
                                                         <p className="text-muted-foreground text-sm line-clamp-1 italic">
-                                                            {session.topic}
+                                                            {top}
                                                         </p>
                                                     </div>
 
                                                     <div className="flex flex-col items-end gap-1">
                                                         <div className="flex items-center text-sm font-medium text-muted-foreground">
                                                             <Clock className="w-3 h-3 mr-1" />
-                                                            {session.duration_minutes}m
+                                                            {formatDuration(session.duration_minutes)}
                                                         </div>
                                                         <TooltipProvider>
                                                             <Tooltip>
@@ -377,5 +400,6 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
 function route(name: string) {
     if (name === 'study-plan.toggle-session') return '/study-plan/toggle-session';
     if (name === 'study-plan.rebalance') return '/study-plan/rebalance';
+    if (name === 'study-plan.update-goals') return '/study-plan/update-goals';
     return '';
 }
