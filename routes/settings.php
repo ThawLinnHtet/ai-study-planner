@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Settings\OnboardingSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
@@ -16,6 +17,10 @@ Route::middleware(['auth', EnsureOnboarded::class])->group(function () {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+
+    Route::get('settings/onboarding', [OnboardingSettingsController::class, 'edit'])->name('onboarding-settings.edit');
+    Route::put('settings/onboarding', [OnboardingSettingsController::class, 'update'])->name('onboarding-settings.update');
+    Route::post('settings/onboarding/reset', [OnboardingSettingsController::class, 'reset'])->name('onboarding-settings.reset');
 });
 
 Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function () {

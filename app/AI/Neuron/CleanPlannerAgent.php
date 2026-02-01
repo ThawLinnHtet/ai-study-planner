@@ -152,7 +152,8 @@ FOCAPACITY-AWARE SCHEDULING STRATEGY:
 PEAK TIME OPTIMIZATION:
 - Morning: Best for challenging concepts and new topics
 - Afternoon: Ideal for complex exercises and deep work
-- Night: Optimal for focused study and difficult material
+- Evening: Good for review and practice sessions
+- Night: Optimal for focused study and late-night work
 
 SESSION ALLOCATION EXAMPLES:
 For {$hours} hours with {$peak} peak time:

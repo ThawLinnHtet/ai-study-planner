@@ -34,14 +34,28 @@ class StudyPlanService
             'current_date' => Carbon::today()->toDateString(),
         ];
 
-        $output = $this->neuron->planner()->createPlan($data);
+        return $this->generatePlanWithData($user, $data);
+    }
 
-        return DB::transaction(function () use ($user, $output) {
+    /**
+     * Generate a study plan with specific data (for settings updates).
+     */
+    public function generatePlanWithData(User $user, array $data): StudyPlan
+    {
+        // Ensure fresh data is passed to AI
+        $planData = array_merge($data, [
+            'current_day' => Carbon::today()->format('l'),
+            'current_date' => Carbon::today()->toDateString(),
+        ]);
+
+        $output = $this->neuron->planner()->createPlan($planData);
+
+        return DB::transaction(function () use ($user, $output, $planData) {
             // Deactivate any existing active plans
             $user->studyPlans()->where('status', 'active')->update(['status' => 'archived']);
 
             $startsOn = Carbon::today();
-            $endsOn = $this->resolvePlanEndDate($user->exam_dates, $startsOn);
+            $endsOn = $this->resolvePlanEndDate($planData['exam_dates'] ?? [], $startsOn);
 
             $normalized = $this->normalizeGeneratedPlan((array) $output);
             $normalized['weeks'] = [
@@ -53,17 +67,18 @@ class StudyPlanService
 
             return StudyPlan::create([
                 'user_id' => $user->id,
-                'title' => 'Initial Strategic Plan',
-                'goal' => $user->study_goal,
+                'title' => 'Updated Study Plan',
+                'goal' => $planData['study_goal'] ?? $user->study_goal,
                 'starts_on' => $startsOn,
                 'ends_on' => $endsOn,
-                'target_hours_per_week' => $user->daily_study_hours * 7,
+                'target_hours_per_week' => ($planData['daily_study_hours'] ?? $user->daily_study_hours) * 7,
                 'status' => 'active',
                 'preferences' => [
-                    'productivity_peak' => $user->productivity_peak,
-                    'learning_style' => $user->learning_style,
+                    'productivity_peak' => $planData['productivity_peak'] ?? $user->productivity_peak,
+                    'learning_style' => $planData['learning_style'] ?? $user->learning_style,
                 ],
                 'generated_plan' => $normalized,
+                'prevent_rebalance_until' => Carbon::now()->addHours(24), // Prevent AI re-balance for 24 hours
             ]);
         });
     }
@@ -173,6 +188,11 @@ class StudyPlanService
     {
         $activePlan = $user->studyPlans()->where('status', 'active')->firstOrFail();
 
+        // Check if rebalance is prevented
+        if ($activePlan->prevent_rebalance_until && Carbon::now()->lt($activePlan->prevent_rebalance_until)) {
+            throw new \Exception('Plan rebalance is temporarily prevented to allow the new schedule to settle. Please try again later.');
+        }
+
         // Gather performance data
         $recentSessions = $user->studySessions()
             ->where('started_at', '>=', Carbon::now()->subDays(7))
@@ -249,6 +269,7 @@ class StudyPlanService
                 'status' => 'active',
                 'preferences' => $activePlan->preferences,
                 'generated_plan' => $normalized,
+                'prevent_rebalance_until' => Carbon::now()->addHours(12), // Prevent AI re-balance for 12 hours
             ]);
         });
     }

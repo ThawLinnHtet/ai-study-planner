@@ -18,6 +18,11 @@ const sidebarNavItems: NavItem[] = [
         icon: null,
     },
     {
+        title: 'Study Preferences',
+        href: '/settings/onboarding',
+        icon: null,
+    },
+    {
         title: 'Password',
         href: editPassword(),
         icon: null,

@@ -1,11 +1,12 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertTriangle, Info } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
@@ -16,6 +17,13 @@ const breadcrumbs: BreadcrumbItem[] = [
         title: 'Onboarding',
         href: '/onboarding/availability',
     },
+];
+
+const peakTimes = [
+    { value: 'morning', label: 'Morning (6AM - 12PM)' },
+    { value: 'afternoon', label: 'Afternoon (12PM - 5PM)' },
+    { value: 'evening', label: 'Evening (5PM - 9PM)' },
+    { value: 'night', label: 'Night (9PM - 2AM)' },
 ];
 
 export default function OnboardingAvailability() {
@@ -164,10 +172,11 @@ export default function OnboardingAvailability() {
                                     <SelectValue placeholder="Select your peak time" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="morning">Morning (6AM - 12PM)</SelectItem>
-                                    <SelectItem value="afternoon">Afternoon (12PM - 6PM)</SelectItem>
-                                    <SelectItem value="evening">Evening (6PM - 10PM)</SelectItem>
-                                    <SelectItem value="night">Night (10PM - 6AM)</SelectItem>
+                                    {peakTimes.map((peakTime) => (
+                                        <SelectItem key={peakTime.value} value={peakTime.value}>
+                                            {peakTime.label}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <InputError message={form.errors.productivity_peak} />

@@ -22,6 +22,7 @@ class StudyPlan extends Model
         'status',
         'preferences',
         'generated_plan',
+        'prevent_rebalance_until',
     ];
 
     protected function casts(): array
@@ -31,6 +32,7 @@ class StudyPlan extends Model
             'ends_on' => 'date',
             'preferences' => 'array',
             'generated_plan' => 'array',
+            'prevent_rebalance_until' => 'datetime',
         ];
     }
 
