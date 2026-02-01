@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
+import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import { AlertTriangle, Info, Settings, RotateCcw, Save } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import { toast } from '@/hooks/use-toast';
@@ -73,6 +75,10 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     const [showResetConfirm, setShowResetConfirm] = useState(false);
     const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
 
+    // Autocomplete hook for subject suggestions
+    const { suggestions, loading, addCustomSubject } = useSimpleSubjects();
+    const [subjectInputValue, setSubjectInputValue] = useState('');
+
     useEffect(() => {
         console.log('Flash data received:', flash);
 
@@ -89,7 +95,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
     // Initialize form with fresh user data on every render
     const form = useForm({
-        subjects: user.subjects || [],
+        subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
         exam_dates: user.exam_dates || [],
         subject_difficulties: user.subject_difficulties || {},
         daily_study_hours: user.daily_study_hours || 2,
@@ -104,7 +110,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     useEffect(() => {
         console.log('User data updated:', user);
         form.setData({
-            subjects: user.subjects || [],
+            subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
             exam_dates: user.exam_dates || [],
             subject_difficulties: user.subject_difficulties || {},
             daily_study_hours: user.daily_study_hours || 2,
@@ -140,16 +146,50 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
         }
     };
 
-    const addSubject = () => {
-        if (newSubject && !form.data.subjects.includes(newSubject)) {
-            const newSubjects = [...form.data.subjects, newSubject];
+    const addSubject = async (subjectName: string) => {
+        if (!form.data.subjects.includes(subjectName)) {
+            // Check if this is a custom subject (not in the 60 predefined professional subjects)
+            const predefinedSubjects = [
+                'Artificial Intelligence', 'Data Science', 'Cybersecurity', 'Software Engineering',
+                'Web Development', 'Mobile Development', 'UI/UX Design', 'Cloud Computing', 'DevOps',
+                'Business Administration', 'Financial Analysis', 'Marketing', 'Accounting',
+                'Project Management', 'Digital Marketing', 'Supply Chain Management', 'Human Resources',
+                'Medicine', 'Nursing', 'Public Health', 'Biotechnology', 'Healthcare Administration',
+                'Education Leadership', 'Curriculum Development', 'Educational Technology', 'Higher Education',
+                'Corporate Law', 'International Law', 'Legal Studies', 'Compliance',
+                'Graphic Design', 'Fashion Design', 'Interior Design', 'Animation',
+                'Film Production', 'Creative Writing', 'Journalism',
+                'Physics', 'Chemistry', 'Biology', 'Environmental Science', 'Mathematics', 'Statistics',
+                'Psychology', 'Sociology', 'Political Science', 'Economics',
+                'Leadership Development', 'Career Development', 'Public Speaking', 'Negotiation Skills',
+                'Machine Learning', 'Blockchain', 'Robotics', 'Augmented Reality', 'Virtual Reality',
+                'Hospitality Management', 'Sports Management', 'Event Management', 'Government Administration'
+            ];
+
+            const isCustomSubject = !predefinedSubjects.includes(subjectName);
+
+            // If it's a custom subject, add to database first
+            if (isCustomSubject) {
+                try {
+                    await addCustomSubject(subjectName);
+                    console.log('Custom subject added to database:', subjectName);
+                } catch (error) {
+                    // Still add it locally even if API fails
+                    console.log('Failed to add custom subject to DB, adding locally:', error);
+                }
+            } else {
+                console.log('Predefined subject, not adding to DB:', subjectName);
+            }
+
+            const newSubjects = [...form.data.subjects, subjectName];
 
             // Use direct data assignment instead of setData
             form.data.subjects = newSubjects;
             form.data.subject_difficulties = {
                 ...form.data.subject_difficulties,
-                [newSubject]: 2, // Default difficulty
+                [subjectName]: 2, // Default difficulty
             };
+            setSubjectInputValue('');
             setNewSubject('');
 
             // Force form to recognize the change
@@ -162,7 +202,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     };
 
     const removeSubject = (subject: string) => {
-        const newSubjects = form.data.subjects.filter(s => s !== subject);
+        const newSubjects = form.data.subjects.filter((s: string) => s !== subject);
         const newDifficulties = { ...form.data.subject_difficulties };
         delete newDifficulties[subject];
 
@@ -246,7 +286,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                             <div>
                                 <Label htmlFor="subjects">Your Subjects</Label>
                                 <div className="mt-2 space-y-2">
-                                    {form.data.subjects.map((subject: string) => (
+                                    {Array.isArray(form.data.subjects) ? form.data.subjects.map((subject: string) => (
                                         <div key={`${subject}-${subjectsKey}`} className="flex items-center gap-2 p-3 border rounded-lg">
                                             <span className="flex-1 font-medium">{subject}</span>
                                             <Select
@@ -271,25 +311,22 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                                                 Remove
                                             </Button>
                                         </div>
-                                    ))}
+                                    )) : (
+                                        <div className="text-muted-foreground">No subjects added yet</div>
+                                    )}
                                 </div>
 
-                                <div className="flex gap-2 mt-2">
-                                    <Select value={newSubject} onValueChange={setNewSubject}>
-                                        <SelectTrigger className="flex-1">
-                                            <SelectValue placeholder="Add a subject..." />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {commonSubjects.map((subject) => (
-                                                <SelectItem key={subject} value={subject}>
-                                                    {subject}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                    <Button type="button" onClick={addSubject}>
-                                        Add
-                                    </Button>
+                                <div className="mt-2">
+                                    <SimpleAutocomplete
+                                        value={subjectInputValue}
+                                        onValueChange={setSubjectInputValue}
+                                        onSelect={addSubject}
+                                        suggestions={suggestions}
+                                        selectedSubjects={form.data.subjects}
+                                        onRemoveSubject={removeSubject}
+                                        placeholder="Type to search subjects (e.g., Mathematics, Physics, Chemistry)..."
+                                        className="w-full"
+                                    />
                                 </div>
                                 <InputError message={form.errors.subjects} />
                             </div>
