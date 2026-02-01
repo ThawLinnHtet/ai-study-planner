@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StudyHoursValidator;
 use App\Services\StudyPlanService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -164,9 +165,28 @@ class OnboardingController extends Controller
                 'daily_study_hours.min' => 'Please enter at least 1 hour per day.',
             ]);
 
+            $dailyHours = $data['daily_study_hours'] ?? 2;
+            $peakTime = $data['productivity_peak'] ?? 'morning';
+
+            // Validate study hours against focus capacity
+            $validation = StudyHoursValidator::validateAndAdjust($dailyHours, $peakTime);
+            
+            // If the requested hours are unrealistic, block progression and show errors
+            if (!$validation['is_realistic']) {
+                return back()
+                    ->withErrors([
+                        'daily_study_hours' => 'Study time of ' . $dailyHours . ' hours exceeds recommended limits. For optimal learning, please choose 1-6 hours per day.'
+                    ])
+                    ->withInput()
+                    ->with('study_hours_warnings', $validation['warnings'])
+                    ->with('study_hours_recommendations', $validation['adjustments'])
+                    ->with('validation_failed', true);
+            }
+
+            // Only save and proceed if hours are realistic
             $user->forceFill([
-                'daily_study_hours' => $data['daily_study_hours'] ?? 2,
-                'productivity_peak' => $data['productivity_peak'] ?? 'morning',
+                'daily_study_hours' => $validation['recommended_hours'],
+                'productivity_peak' => $peakTime,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 5),
             ])->save();
 

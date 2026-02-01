@@ -29,10 +29,13 @@ class OptimizerAgent extends Agent
             ],
             steps: [
                 'The optimized_schedule MUST use day names (Monday, Tuesday, etc.) as keys.',
-                'Each session in the schedule MUST be an object, never a string.',
-                'Maintain the exact structure of the original schedule while re-balancing topics.',
+                'Each day MUST contain a "sessions" array with session objects.',
+                'Each session MUST be an object with subject, topic, duration_minutes, focus_level.',
+                'NEVER use numeric array keys like 0,1,2,3 for days.',
+                'Maintain the same subjects and topics but reorganize for better learning.',
                 'Duration for each session MUST be provided in minutes as "duration_minutes" (integer).',
-                'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All optimizations must apply to Today and the future.'
+                'IMPORTANT: Do NOT schedule tasks for past days. All optimizations must apply to Today and the future.',
+                'Return ONLY the JSON object, no markdown formatting, no explanations.'
             ]
         );
     }

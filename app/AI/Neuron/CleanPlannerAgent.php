@@ -113,6 +113,13 @@ Generate a weekly study plan for a student with the following profile:
 - Peak Energy Time: {$peak}
 - Learning Preferences: {$styles}
 
+FOCUS CAPACITY CONSTRAINTS:
+- Maximum sustainable high-focus time: 4 hours per day
+- Maximum sustainable medium-focus time: 3 hours per day
+- Maximum sustainable low-focus time: 2 hours per day
+- Total realistic focus capacity: 9 hours per day
+- IMPORTANT: Distribute study time across focus levels to prevent burnout
+
 CRITICAL REQUIREMENTS:
 1. You MUST return a JSON object with a "schedule" key containing day names as keys
 2. Use ONLY these exact day keys: "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
@@ -122,6 +129,37 @@ CRITICAL REQUIREMENTS:
 6. Start scheduling from today ({$currentDay})
 7. Do NOT wrap the schedule in a numeric array
 8. Return ONLY the JSON object, no markdown formatting, no explanations
+
+ENHANCED UX & QUALITY REQUIREMENTS:
+9. DAILY TIME: Total daily study time MUST be exactly {$hours} hours (±15 minutes)
+10. FOCUS DISTRIBUTION: Respect focus capacity limits - max 4h high, 3h medium, 2h low focus per day
+11. PEAK ALIGNMENT: Schedule high-focus sessions during user's peak time ({$peak})
+12. SUBJECT BALANCE: Distribute subjects evenly across available focus time
+13. FOCUS VARIETY: Mix focus levels - high focus during peak time, medium for regular sessions, low for review
+14. NO REPEATS: Never repeat the same subject on the same day
+15. TOPIC PROGRESSION: Topics should build logically from basic to advanced
+16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
+17. LEARNING STYLE: Match topics to learning style ({$styles}) - visual learners get diagrams/concepts, reading gets text-heavy topics
+18. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
+19. BREAKS: Build in natural break points between different subjects and focus levels
+
+FOCAPACITY-AWARE SCHEDULING STRATEGY:
+- If {$hours} ≤ 4: Use high-focus sessions during peak time only
+- If 4 < {$hours} ≤ 7: Mix high-focus (during peak) + medium-focus sessions
+- If 7 < {$hours} ≤ 9: Add low-focus sessions for review and lighter topics
+- If {$hours} > 9: Include mandatory break time and varied focus levels to prevent burnout
+
+PEAK TIME OPTIMIZATION:
+- Morning: Best for challenging concepts and new topics
+- Afternoon: Ideal for complex exercises and deep work
+- Night: Optimal for focused study and difficult material
+
+SESSION ALLOCATION EXAMPLES:
+For {$hours} hours with {$peak} peak time:
+- High-focus: Allocate up to 4 hours during {$peak} for challenging topics
+- Medium-focus: Allocate up to 3 hours for regular study and practice
+- Low-focus: Allocate up to 2 hours for review and light topics
+- Breaks: Include 15-minute breaks between 90-minute study blocks
 
 Example format:
 {

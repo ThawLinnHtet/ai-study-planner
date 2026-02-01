@@ -6,13 +6,13 @@ class NeuronService
 {
     protected CleanPlannerAgent $planner;
     protected AnalyzerAgent $analyzer;
-    protected OptimizerAgent $optimizer;
+    protected CleanOptimizerAgent $optimizer;
 
     public function __construct()
     {
         $this->planner = new CleanPlannerAgent();
         $this->analyzer = new AnalyzerAgent();
-        $this->optimizer = new OptimizerAgent();
+        $this->optimizer = new CleanOptimizerAgent();
     }
 
     /**
@@ -31,5 +31,5 @@ class NeuronService
 
     public function planner(): CleanPlannerAgent { return $this->planner; }
     public function analyzer(): AnalyzerAgent { return $this->analyzer; }
-    public function optimizer(): OptimizerAgent { return $this->optimizer; }
+    public function optimizer(): CleanOptimizerAgent { return $this->optimizer; }
 }

@@ -6,13 +6,12 @@ use NeuronAI\StructuredOutput\SchemaProperty;
 
 class OptimizerOutput
 {
-    /** @var array<string, \App\AI\Neuron\Output\DayPlan> */
-    #[SchemaProperty(description: 'Updated schedule following the same structure as PlannerOutput', required: true)]
+    #[SchemaProperty(description: 'Updated schedule with day names as keys, each containing sessions array', required: true)]
     public array $optimized_schedule;
 
     #[SchemaProperty(description: 'List of specific modifications made', required: true)]
-    public array $change_log;
+    public array $change_log = [];
 
     #[SchemaProperty(description: 'Why the new plan is better', required: true)]
-    public string $predicted_improvement;
+    public string $predicted_improvement = '';
 }

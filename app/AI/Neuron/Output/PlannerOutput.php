@@ -29,5 +29,5 @@ class PlannerOutput
     public array $schedule;
 
     #[SchemaProperty(title: 'Strategy Summary', description: 'A brief explanation of why this schedule was designed this way.', required: true)]
-    public string $strategy_summary;
+    public string $strategy_summary = '';
 }

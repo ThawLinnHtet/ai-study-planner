@@ -183,19 +183,47 @@ class StudyPlanService
             ->get();
 
         // 1. Analyze performance
-        $analysis = $this->neuron->analyzer()->analyze([
-            'study_sessions' => $recentSessions->toArray(),
-            'quiz_results' => $recentQuizzes->toArray(),
-            'current_plan' => $activePlan->generated_plan,
-        ]);
+        $hasPerformanceData = $recentSessions->isNotEmpty() || $recentQuizzes->isNotEmpty();
+        
+        if (!$hasPerformanceData) {
+            // If no performance data, create a gentle optimization that preserves beginner topics
+            $analysis = (object)[
+                'insights' => [
+                    [
+                        'detail' => 'No performance data available. Preserving current topic progression.',
+                        'significance' => 'Beginner topics should remain at appropriate difficulty level.'
+                    ]
+                ],
+                'subject_mastery' => [],
+                'recommendations' => [
+                    'Continue with current topic progression.',
+                    'Re-balance recommended after 1-2 weeks of study data.'
+                ]
+            ];
+        } else {
+            $analysis = $this->neuron->analyzer()->analyze([
+                'study_sessions' => $recentSessions->toArray(),
+                'quiz_results' => $recentQuizzes->toArray(),
+                'current_plan' => $activePlan->generated_plan,
+            ]);
+        }
 
         // 2. Optimize plan
-        $optimization = $this->neuron->optimizer()->optimize([
+        $optimizationData = [
             'current_plan' => $activePlan->generated_plan,
             'analysis_insights' => (array)$analysis,
             'current_day' => Carbon::today()->format('l'),
             'current_date' => Carbon::today()->toDateString(),
-        ]);
+            'user_subjects' => $user->subjects,
+            'user_exam_dates' => $user->exam_dates,
+            'user_difficulties' => $user->subject_difficulties,
+            'daily_study_hours' => $user->daily_study_hours,
+            'productivity_peak' => $user->productivity_peak,
+            'learning_style' => $user->learning_style,
+            'has_performance_data' => $hasPerformanceData,
+        ];
+        
+        $optimization = $this->neuron->optimizer()->optimize($optimizationData);
 
         // 3. Persist new plan (with weeks structure for weekly rollover)
         return DB::transaction(function () use ($user, $activePlan, $optimization) {
