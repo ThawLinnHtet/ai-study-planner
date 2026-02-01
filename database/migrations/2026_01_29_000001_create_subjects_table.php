@@ -13,24 +13,13 @@ return new class extends Migration
     {
         Schema::create('subjects', function (Blueprint $table) {
             $table->id();
-
-            $table->foreignId('user_id')
-                ->nullable()
-                ->constrained()
-                ->nullOnDelete();
-
-            $table->string('name');
-            $table->string('slug');
-            $table->text('description')->nullable();
-
-            $table->string('color')->nullable();
-            $table->string('icon')->nullable();
-
+            
+            $table->string('name'); // Simple text-only subject name
             $table->timestamps();
-            $table->softDeletes();
-
-            $table->index(['user_id', 'name']);
-            $table->unique(['user_id', 'slug']);
+            
+            // Index for faster searches
+            $table->index('name');
+            $table->unique('name'); // No duplicate subject names
         });
     }
 

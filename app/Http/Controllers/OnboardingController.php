@@ -37,7 +37,7 @@ class OnboardingController extends Controller
             'step' => $step,
             'totalSteps' => self::TOTAL_STEPS,
             'onboarding' => [
-                'subjects' => $user->subjects ?? [],
+                'subjects' => json_decode($user->subjects ?? '[]', true) ?? [],
                 'exam_dates' => $user->exam_dates ?? [],
                 'subject_difficulties' => $user->subject_difficulties ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
@@ -95,7 +95,7 @@ class OnboardingController extends Controller
             }
 
             $user->forceFill([
-                'subjects' => $subjects,
+                'subjects' => json_encode($subjects),
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 3),
             ])->save();
 
@@ -126,7 +126,7 @@ class OnboardingController extends Controller
                 'exam_dates.*.before' => 'Exam dates must be within the next 5 years.',
             ]);
 
-            $subjects = $user->subjects ?? [];
+            $subjects = is_string($user->subjects) ? json_decode($user->subjects, true) : ($user->subjects ?? []);
             // Keep only subjects that have a non-empty date set (do not store null in DB)
             $examDates = collect($data['exam_dates'] ?? [])
                 ->filter(fn ($date, $subject) => in_array($subject, $subjects) && $date !== null && $date !== '')
@@ -238,4 +238,22 @@ class OnboardingController extends Controller
 
         return redirect()->route('dashboard');
     }
+
+    public function storeSubjects(Request $request): RedirectResponse
+{
+    $validated = $request->validate([
+        'subjects' => ['required', 'array', 'min:1'],
+        'subjects.*' => ['required', 'string', 'max:255'],
+    ]);
+
+    $user = $request->user();
+    
+    // Store subjects in user's onboarding data
+    $user->update([
+        'subjects' => $validated['subjects'],
+        'onboarding_step' => 2, // Move to step 2 (exam dates)
+    ]);
+
+    return back()->with('success', 'Subjects saved successfully!');
+}
 }

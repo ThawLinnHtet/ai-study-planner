@@ -3,48 +3,21 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Subject extends Model
 {
-    use SoftDeletes;
-
     protected $fillable = [
-        'user_id',
         'name',
-        'slug',
-        'description',
-        'exam_date',
-        'color',
-        'icon',
     ];
 
-    protected function casts(): array
+    // Simple text-only subjects
+    public function scopeByName($query, $name)
     {
-        return [
-            'exam_date' => 'date',
-        ];
+        return $query->where('name', 'LIKE', "%{$name}%");
     }
 
-    public function user(): BelongsTo
+    public function scopeActive($query)
     {
-        return $this->belongsTo(User::class);
-    }
-
-    public function studyPlans(): HasMany
-    {
-        return $this->hasMany(StudyPlan::class);
-    }
-
-    public function studySessions(): HasMany
-    {
-        return $this->hasMany(StudySession::class);
-    }
-
-    public function quizzes(): HasMany
-    {
-        return $this->hasMany(Quiz::class);
+        return $query; // All subjects are active in simplified approach
     }
 }
