@@ -122,14 +122,6 @@ class OnboardingSettingsController extends Controller
 
         // Verify the data was actually saved
         $user->refresh();
-        \Log::info('=== VERIFYING SAVED DATA ===');
-        \Log::info('Saved subjects', ['subjects' => $user->subjects]);
-        \Log::info('Saved subject_difficulties', ['subject_difficulties' => $user->subject_difficulties]);
-        \Log::info('Saved daily_study_hours', ['daily_study_hours' => $user->daily_study_hours]);
-        \Log::info('Saved productivity_peak', ['productivity_peak' => $user->productivity_peak]);
-        \Log::info('Saved learning_style', ['learning_style' => $user->learning_style]);
-        \Log::info('Saved study_goal', ['study_goal' => $user->study_goal]);
-        \Log::info('Saved timezone', ['timezone' => $user->timezone]);
 
         // Regenerate study plan if requested
         if ($validated['regenerate_plan'] ?? false) {

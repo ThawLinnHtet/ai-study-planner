@@ -140,7 +140,13 @@ class OnboardingController extends Controller
 
             // Keep only subjects that have a non-empty date set (do not store null in DB)
             $examDates = collect($data['exam_dates'] ?? [])
-                ->filter(fn ($date, $subject) => in_array($subject, $subjects) && $date !== null && $date !== '')
+                ->filter(function ($date, $subject) use ($subjects) {
+                    // Case-insensitive comparison to handle subject name differences
+                    $normalizedSubject = strtolower($subject);
+                    $normalizedSubjects = array_map('strtolower', $subjects);
+                    $inSubjects = in_array($normalizedSubject, $normalizedSubjects);
+                    return $inSubjects && $date !== null && $date !== '';
+                })
                 ->all();
 
             $difficulties = collect($data['subject_difficulties'] ?? [])
@@ -205,9 +211,10 @@ class OnboardingController extends Controller
             $user->forceFill([
                 'daily_study_hours' => $validation['recommended_hours'],
                 'productivity_peak' => $peakTime,
-                // Preserve existing subjects and difficulties
+                // Preserve existing subjects, difficulties, and exam dates
                 'subjects' => $user->subjects,
                 'subject_difficulties' => $user->subject_difficulties,
+                'exam_dates' => $user->exam_dates,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 5),
             ])->save();
 
@@ -231,9 +238,10 @@ class OnboardingController extends Controller
                 'learning_style' => $data['learning_style'],
                 'study_goal' => $data['study_goal'],
                 'timezone' => $timezone,
-                // Preserve existing subjects and difficulties
+                // Preserve existing subjects, difficulties, and exam dates
                 'subjects' => $user->subjects,
                 'subject_difficulties' => $user->subject_difficulties,
+                'exam_dates' => $user->exam_dates,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 6),
             ])->save();
 

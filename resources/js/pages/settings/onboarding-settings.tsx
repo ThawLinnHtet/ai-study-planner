@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
+import { DatePicker } from '@/components/ui/date-picker';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
@@ -22,7 +23,8 @@ import {
     Sunrise,
     Sun,
     Sunset,
-    Moon
+    Moon,
+    CalendarDays
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreadcrumbItem, SharedData } from '@/types';
@@ -57,7 +59,7 @@ interface User {
     name: string;
     email: string;
     subjects: string[];
-    exam_dates: string[];
+    exam_dates: Record<string, string | null>;
     subject_difficulties: Record<string, number>;
     daily_study_hours: number;
     productivity_peak: string;
@@ -101,7 +103,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     // Initialize form with fresh user data on every render
     const form = useForm({
         subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
-        exam_dates: user.exam_dates || [],
+        exam_dates: user.exam_dates || {},
         subject_difficulties: user.subject_difficulties || {},
         daily_study_hours: user.daily_study_hours || 2,
         productivity_peak: user.productivity_peak || 'morning',
@@ -115,7 +117,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     useEffect(() => {
         form.setData({
             subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
-            exam_dates: user.exam_dates || [],
+            exam_dates: user.exam_dates || {},
             subject_difficulties: user.subject_difficulties || {},
             daily_study_hours: user.daily_study_hours || 2,
             productivity_peak: user.productivity_peak || 'morning',
@@ -177,34 +179,19 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Debug: Log current form data before submission
-        console.log('=== GENERATE SCHEDULE DEBUG ===');
-        console.log('Current form data:', form.data);
-        console.log('Subjects:', form.data.subjects);
-        console.log('Subject difficulties:', form.data.subject_difficulties);
-        console.log('Daily study hours:', form.data.daily_study_hours);
-        console.log('Productivity peak:', form.data.productivity_peak);
-        console.log('Learning style:', form.data.learning_style);
-        console.log('Study goal:', form.data.study_goal);
-        console.log('Timezone:', form.data.timezone);
-
         // Manually create the data object with regenerate_plan set to true
         const submitData = {
             ...form.data,
             regenerate_plan: true
         };
 
-        console.log('🔄 Submitting data with regenerate_plan:', submitData.regenerate_plan);
-
         // Use router.visit for direct submission with custom data
         router.put('/settings/onboarding', submitData, {
             onSuccess: () => {
-                console.log('✅ Preferences saved and schedule generated!');
                 // Reset the flag after successful submission
                 form.setData('regenerate_plan', false);
             },
             onError: (errors: any) => {
-                console.log('❌ Failed to save preferences:', errors);
                 toast.error('Failed to save preferences: ' + Object.values(errors).join(', '));
                 // Reset the flag on error
                 form.setData('regenerate_plan', false);
@@ -331,6 +318,59 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                                     <p className="text-sm text-destructive">{form.errors.subjects}</p>
                                 )}
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Exam Dates Section */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <CalendarDays className="w-5 h-5" />
+                                Exam Dates
+                            </CardTitle>
+                            <CardDescription>
+                                Set exam dates for each subject to prioritize study time
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {form.data.subjects && form.data.subjects.length > 0 ? (
+                                <div className="space-y-3">
+                                    {form.data.subjects.map((subject: string) => (
+                                        <div key={subject} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                                            <div className="flex items-center gap-3">
+                                                <BookOpen className="w-4 h-4 text-muted-foreground" />
+                                                <div>
+                                                    <Label htmlFor={`exam-date-${subject}`} className="text-base font-semibold">
+                                                        {subject}
+                                                    </Label>
+                                                    <p className="text-xs text-muted-foreground">When is your exam?</p>
+                                                </div>
+                                            </div>
+                                            <div className="w-[200px]">
+                                                <DatePicker
+                                                    id={`exam-date-${subject}`}
+                                                    value={form.data.exam_dates?.[subject] || null}
+                                                    onChange={(value) =>
+                                                        form.setData('exam_dates', {
+                                                            ...(form.data.exam_dates || {}),
+                                                            [subject]: value,
+                                                        })
+                                                    }
+                                                    placeholder="Pick an exam date"
+                                                />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                    <p>Add subjects first to set their exam dates</p>
+                                </div>
+                            )}
+                            {form.errors.exam_dates && (
+                                <p className="text-sm text-destructive">{form.errors.exam_dates}</p>
+                            )}
                         </CardContent>
                     </Card>
 
