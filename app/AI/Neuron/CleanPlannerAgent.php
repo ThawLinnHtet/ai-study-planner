@@ -140,8 +140,9 @@ ENHANCED UX & QUALITY REQUIREMENTS:
 15. TOPIC PROGRESSION: Topics should build logically from basic to advanced
 16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
 17. LEARNING STYLE: Match topics to learning style ({$styles}) - visual learners get diagrams/concepts, reading gets text-heavy topics
-18. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
-19. BREAKS: Build in natural break points between different subjects and focus levels
+18. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
+19. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
+20. BREAKS: Build in natural break points between different subjects and focus levels
 
 FOCAPACITY-AWARE SCHEDULING STRATEGY:
 - If {$hours} ≤ 4: Use high-focus sessions during peak time only
