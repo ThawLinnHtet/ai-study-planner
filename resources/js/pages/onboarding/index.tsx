@@ -191,23 +191,40 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
     }, [effectiveExamDates]);
 
     // Use the simplified subjects API hook
-    const { suggestions, loading, searchSubjects, addCustomSubject } = useSimpleSubjects();
+    const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
 
-    // Search subjects when input changes
-    useEffect(() => {
-        const timeoutId = setTimeout(() => {
-            searchSubjects(subjectInputValue);
-        }, 300); // Debounce search
+    // Search suggestions hook
+    const { data: searchData, isLoading: searchLoading } = useSearchSuggestions(subjectInputValue);
+    const suggestions = searchData?.subjects || [];
+    const loading = searchLoading;
 
-        return () => clearTimeout(timeoutId);
-    }, [subjectInputValue, searchSubjects]);
+    // Remove the old useEffect since useSearchSuggestions handles searching automatically
 
     const addSubject = async (subjectName: string) => {
         if (!form.data.subjects.includes(subjectName)) {
+            // Use the same predefined subjects list from the hook
+            const predefinedSubjects = allSubjects || [];
+            const isCustomSubject = !predefinedSubjects.includes(subjectName);
+
+            // Update UI immediately (optimistic update)
             const newSubjects = [...form.data.subjects, subjectName];
+            const newDifficulties = {
+                ...form.data.subject_difficulties,
+                [subjectName]: 2, // Default difficulty: Medium
+            };
+
             form.setData('subjects', newSubjects);
+            form.setData('subject_difficulties', newDifficulties);
+            setSubjectInputValue('');
+
+            // Add to database in background (non-blocking)
+            if (isCustomSubject) {
+                addCustomSubject(subjectName)
+                    .catch((error) => {
+                        // Subject is already in UI, so no need to remove it
+                    });
+            }
         }
-        setSubjectInputValue('');
     };
 
     const removeSubject = (subjectName: string) => {
@@ -216,7 +233,11 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         }
 
         const newSubjects = form.data.subjects.filter((s) => s !== subjectName);
+        const newDifficulties = { ...form.data.subject_difficulties };
+        delete newDifficulties[subjectName]; // Remove difficulty for this subject
+
         form.setData('subjects', newSubjects);
+        form.setData('subject_difficulties', newDifficulties);
 
         // Also clear the input if it matches the removed subject
         if (subjectInputValue === subjectName) {
@@ -249,6 +270,24 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
     function next() {
         if (step === totalSteps) {
             if (!form.data.confirm) {
+                // Ensure all subjects have default difficulties before submission
+                const finalDifficulties = { ...form.data.subject_difficulties };
+
+                // Force reset if difficulties is an array instead of object
+                if (Array.isArray(form.data.subject_difficulties)) {
+                    form.setData('subject_difficulties', {});
+                }
+
+                // Ensure all subjects have default difficulties
+                form.data.subjects.forEach((subject: string) => {
+                    if (!finalDifficulties[subject]) {
+                        finalDifficulties[subject] = 2; // Default to Medium
+                    }
+                });
+
+                // Update form data with ensured difficulties
+                form.setData('subject_difficulties', finalDifficulties);
+
                 form.post('/onboarding', {
                     preserveScroll: true,
                 });

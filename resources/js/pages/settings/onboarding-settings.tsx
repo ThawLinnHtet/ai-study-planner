@@ -1,18 +1,27 @@
-import { Head, useForm, usePage } from '@inertiajs/react';
-import React, { useState, useEffect } from 'react';
-import Heading from '@/components/heading';
-import InputError from '@/components/input-error';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
-import { AlertTriangle, Info, Settings, RotateCcw, Save } from 'lucide-react';
-import AppLayout from '@/layouts/app-layout';
-import { toast } from '@/hooks/use-toast';
+import { toast } from 'sonner';
+import { useState, useEffect } from 'react';
+import {
+    Settings,
+    RotateCcw,
+    Save,
+    AlertTriangle,
+    BookOpen,
+    Clock,
+    User as UserIcon,
+    Brain,
+    X
+} from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreadcrumbItem, SharedData } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -73,23 +82,24 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     const flash = page.props.flash;
     const [newSubject, setNewSubject] = useState('');
     const [showResetConfirm, setShowResetConfirm] = useState(false);
+    const [showResetDialog, setShowResetDialog] = useState(false);
     const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
 
-    // Autocomplete hook for subject suggestions
-    const { suggestions, loading, addCustomSubject } = useSimpleSubjects();
+    // TanStack Query for subjects
+    const { allSubjects, loading, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
     const [subjectInputValue, setSubjectInputValue] = useState('');
 
-    useEffect(() => {
-        console.log('Flash data received:', flash);
+    // Search suggestions hook
+    const { data: searchData, isLoading: searchLoading } = useSearchSuggestions(subjectInputValue);
+    const suggestions = searchData?.subjects || [];
 
+    useEffect(() => {
         if (flash?.success) {
             toast.success(flash.success);
         }
+
         if (flash?.error) {
             toast.error(flash.error);
-        }
-        if (flash?.info) {
-            toast.info(flash.info);
         }
     }, [flash]);
 
@@ -108,7 +118,6 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
     // Reset form data when user data changes (after save)
     useEffect(() => {
-        console.log('User data updated:', user);
         form.setData({
             subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
             exam_dates: user.exam_dates || [],
@@ -124,16 +133,11 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        console.log('Submitting form data:', form.data);
-        console.log('Subjects in form:', form.data.subjects);
-
         form.put('/settings/onboarding', {
             onError: (errors) => {
-                console.log('Form errors:', errors);
                 toast.error('Validation failed: ' + Object.values(errors).join(', '));
             },
             onSuccess: () => {
-                console.log('Form submitted successfully');
                 // Force a complete page reload to get fresh user data
                 window.location.href = '/settings/onboarding';
             }
@@ -144,6 +148,16 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
         if (confirm('Are you sure you want to reset your onboarding? This will clear all your study preferences and deactivate your current study plan.')) {
             window.location.href = '/settings/onboarding/reset';
         }
+    };
+
+    const handleRecommendedReset = () => {
+        // Clear all subjects but keep other settings
+        form.setData('subjects', []);
+        form.setData('subject_difficulties', {});
+        setSubjectInputValue('');
+        setSubjectsKey(prev => prev + 1);
+        setShowResetDialog(false);
+        toast.success('Subjects cleared. You can now add new subjects and generate a fresh schedule.');
     };
 
     const addSubject = async (subjectName: string) => {
@@ -172,13 +186,9 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
             if (isCustomSubject) {
                 try {
                     await addCustomSubject(subjectName);
-                    console.log('Custom subject added to database:', subjectName);
                 } catch (error) {
                     // Still add it locally even if API fails
-                    console.log('Failed to add custom subject to DB, adding locally:', error);
                 }
-            } else {
-                console.log('Predefined subject, not adding to DB:', subjectName);
             }
 
             const newSubjects = [...form.data.subjects, subjectName];
@@ -189,6 +199,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                 ...form.data.subject_difficulties,
                 [subjectName]: 2, // Default difficulty
             };
+
             setSubjectInputValue('');
             setNewSubject('');
 
@@ -198,6 +209,13 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
             // Force re-render of subjects list
             setSubjectsKey(prev => prev + 1);
+
+            // Trigger immediate search to refresh suggestions
+            if (subjectInputValue.trim()) {
+                // This will trigger the useSearchSuggestions hook to refresh
+                setSubjectInputValue('');
+                setTimeout(() => setSubjectInputValue(subjectName[0]), 100);
+            }
         }
     };
 
@@ -225,244 +243,334 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
             <Head title="Study Preferences" />
 
             <div className="p-6 max-w-4xl mx-auto space-y-8">
+                {/* Header */}
                 <div className="flex items-center justify-between">
-                    <Heading
-                        title="Study Preferences"
-                        description="Update your learning preferences and study settings"
-                    />
+                    <div>
+                        <h1 className="text-2xl font-bold">Study Preferences</h1>
+                        <p className="text-muted-foreground">Manage your subjects and study settings</p>
+                        <p className="text-sm text-muted-foreground mt-2">
+                            Update your learning preferences and generate new study plans
+                        </p>
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button
+                            onClick={() => {
+                                form.setData('regenerate_plan', true);
+                                form.submit();
+                            }}
+                            className="bg-primary hover:bg-primary/90"
+                        >
+                            <Brain className="w-4 h-4 mr-2" />
+                            Generate Schedule
+                        </Button>
+                        <Button
                             variant="outline"
-                            size="sm"
-                            onClick={handleReset}
-                            className="text-destructive hover:text-destructive"
+                            onClick={() => setShowResetDialog(true)}
                         >
                             <RotateCcw className="w-4 h-4 mr-2" />
-                            Reset Onboarding
+                            Start Over
                         </Button>
                     </div>
                 </div>
 
-                {/* Study Hours Warnings */}
-                {(flash as any)?.study_hours_warnings && (
-                    <div className="space-y-3">
-                        {(flash as any).study_hours_warnings.map((warning: string, index: number) => (
-                            <Alert key={index} className="border-amber-200 bg-amber-50">
-                                <AlertTriangle className="h-4 w-4 text-amber-600" />
-                                <AlertDescription className="text-amber-800">
-                                    {warning}
-                                </AlertDescription>
-                            </Alert>
-                        ))}
-
-                        {(flash as any)?.hours_adjusted && (flash as any)?.study_hours_recommendations && (
-                            <Alert className="border-blue-200 bg-blue-50">
-                                <Info className="h-4 w-4 text-blue-600" />
-                                <AlertDescription className="text-blue-800">
-                                    <div className="font-medium mb-2">⚠️ Hours Automatically Adjusted</div>
-                                    <ul className="list-disc list-inside space-y-1 text-sm">
-                                        {(flash as any).study_hours_recommendations.map((rec: string, index: number) => (
-                                            <li key={index}>{rec}</li>
-                                        ))}
-                                    </ul>
-                                    <div className="mt-2 text-sm">
-                                        Your study time has been adjusted from {(flash as any).original_hours} to {(flash as any).recommended_hours} hours for optimal learning.
-                                    </div>
-                                </AlertDescription>
-                            </Alert>
-                        )}
-                    </div>
+                {/* Success/Error Messages */}
+                {flash?.hours_adjusted && (
+                    <Alert>
+                        <AlertTriangle className="h-4 w-4" />
+                        <AlertDescription>
+                            <strong>Study hours adjusted:</strong> We adjusted your daily study hours from {flash?.original_hours} to {flash?.recommended_hours} hours for better focus and sustainability.
+                        </AlertDescription>
+                    </Alert>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
                     {/* Subjects Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-semibold flex items-center gap-2">
-                            <Settings className="w-5 h-5" />
-                            Subjects & Goals
-                        </h3>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <BookOpen className="w-5 h-5" />
+                                Subjects & Difficulty
+                            </CardTitle>
+                            <CardDescription>
+                                Add subjects and set their difficulty levels for personalized scheduling
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {/* Current Subjects */}
+                            {form.data.subjects && form.data.subjects.length > 0 && (
+                                <div className="space-y-3">
+                                    <Label className="text-sm font-medium">Current Subjects</Label>
+                                    <div className="grid gap-3">
+                                        {form.data.subjects.map((subject: string) => (
+                                            <div key={`${subject}-${subjectsKey}`} className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
+                                                <span className="flex-1 font-medium">{subject}</span>
+                                                <div className="flex items-center gap-2">
+                                                    <Label className="text-xs text-muted-foreground">Difficulty:</Label>
+                                                    <Select
+                                                        value={form.data.subject_difficulties[subject]?.toString() || '2'}
+                                                        onValueChange={(value) => updateSubjectDifficulty(subject, parseInt(value))}
+                                                    >
+                                                        <SelectTrigger className="w-24 h-8">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="1">Easy</SelectItem>
+                                                            <SelectItem value="2">Medium</SelectItem>
+                                                            <SelectItem value="3">Hard</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        onClick={() => removeSubject(subject)}
+                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                    >
+                                                        <X className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
 
-                        <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="subjects">Your Subjects</Label>
-                                <div className="mt-2 space-y-2">
-                                    {Array.isArray(form.data.subjects) ? form.data.subjects.map((subject: string) => (
-                                        <div key={`${subject}-${subjectsKey}`} className="flex items-center gap-2 p-3 border rounded-lg">
-                                            <span className="flex-1 font-medium">{subject}</span>
-                                            <Select
-                                                value={form.data.subject_difficulties[subject]?.toString() || '2'}
-                                                onValueChange={(value) => updateSubjectDifficulty(subject, parseInt(value))}
-                                            >
-                                                <SelectTrigger className="w-32">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="1">Easy</SelectItem>
-                                                    <SelectItem value="2">Medium</SelectItem>
-                                                    <SelectItem value="3">Hard</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() => removeSubject(subject)}
-                                            >
-                                                Remove
-                                            </Button>
-                                        </div>
-                                    )) : (
-                                        <div className="text-muted-foreground">No subjects added yet</div>
+                            {/* Add New Subject */}
+                            <div className="space-y-2">
+                                <Label className="text-sm font-medium">Add New Subject</Label>
+                                <SimpleAutocomplete
+                                    value={subjectInputValue}
+                                    onValueChange={setSubjectInputValue}
+                                    onSelect={addSubject}
+                                    suggestions={suggestions}
+                                    selectedSubjects={form.data.subjects}
+                                    onRemoveSubject={removeSubject}
+                                    placeholder="Type to search or add a subject..."
+                                    className="w-full"
+                                />
+                                <p className="text-xs text-muted-foreground">
+                                    Start typing to search existing subjects or add a custom one
+                                </p>
+                                {form.errors.subjects && (
+                                    <p className="text-sm text-destructive">{form.errors.subjects}</p>
+                                )}
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Study Schedule Section */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Clock className="w-5 h-5" />
+                                Study Schedule
+                            </CardTitle>
+                            <CardDescription>
+                                Configure your daily study hours and peak productivity times
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <Label htmlFor="daily_study_hours">Daily Study Hours</Label>
+                                    <Input
+                                        id="daily_study_hours"
+                                        type="number"
+                                        min="1"
+                                        max="16"
+                                        value={form.data.daily_study_hours}
+                                        onChange={(e) => form.setData('daily_study_hours', parseInt(e.target.value))}
+                                        placeholder="e.g., 4"
+                                    />
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        Recommended: 2-6 hours for optimal learning
+                                    </p>
+                                    {form.errors.daily_study_hours && (
+                                        <p className="text-sm text-destructive">{form.errors.daily_study_hours}</p>
                                     )}
                                 </div>
 
-                                <div className="mt-2">
-                                    <SimpleAutocomplete
-                                        value={subjectInputValue}
-                                        onValueChange={setSubjectInputValue}
-                                        onSelect={addSubject}
-                                        suggestions={suggestions}
-                                        selectedSubjects={form.data.subjects}
-                                        onRemoveSubject={removeSubject}
-                                        placeholder="Type to search subjects (e.g., Mathematics, Physics, Chemistry)..."
-                                        className="w-full"
-                                    />
+                                <div>
+                                    <Label htmlFor="productivity_peak">Peak Productivity Time</Label>
+                                    <Select
+                                        value={form.data.productivity_peak}
+                                        onValueChange={(value) => form.setData('productivity_peak', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select your peak time" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="morning">Morning (6AM - 12PM)</SelectItem>
+                                            <SelectItem value="afternoon">Afternoon (12PM - 6PM)</SelectItem>
+                                            <SelectItem value="evening">Evening (6PM - 10PM)</SelectItem>
+                                            <SelectItem value="night">Night (10PM - 6AM)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {form.errors.productivity_peak && (
+                                        <p className="text-sm text-destructive">{form.errors.productivity_peak}</p>
+                                    )}
                                 </div>
-                                <InputError message={form.errors.subjects} />
                             </div>
-
-                            <div>
-                                <Label htmlFor="study_goal">Study Goal</Label>
-                                <Input
-                                    id="study_goal"
-                                    value={form.data.study_goal}
-                                    onChange={(e) => form.setData('study_goal', e.target.value)}
-                                    placeholder="e.g., Master TypeScript in 3 months, Pass AWS certification, etc."
-                                />
-                                <InputError message={form.errors.study_goal} />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Study Schedule Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Study Schedule</h3>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <Label htmlFor="daily_study_hours">Daily Study Hours</Label>
-                                <Input
-                                    id="daily_study_hours"
-                                    type="number"
-                                    min={1}
-                                    max={16}
-                                    value={form.data.daily_study_hours}
-                                    onChange={(e) => form.setData('daily_study_hours', parseInt(e.target.value))}
-                                />
-                                <p className="text-sm text-gray-600 mt-1">
-                                    Recommended: 1-6 hours for optimal focus and retention
-                                </p>
-                                <InputError message={form.errors.daily_study_hours} />
-                            </div>
-
-                            <div>
-                                <Label htmlFor="productivity_peak">Peak Productivity Time</Label>
-                                <Select
-                                    value={form.data.productivity_peak}
-                                    onValueChange={(value) => form.setData('productivity_peak', value)}
-                                >
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select your peak time" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {peakTimes.map((time) => (
-                                            <SelectItem key={time.value} value={time.value}>
-                                                {time.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                                <InputError message={form.errors.productivity_peak} />
-                            </div>
-                        </div>
-                    </div>
+                        </CardContent>
+                    </Card>
 
                     {/* Learning Preferences Section */}
-                    <div className="space-y-4">
-                        <h3 className="text-lg font-semibold">Learning Preferences</h3>
-
-                        <div className="space-y-4">
-                            <div>
-                                <Label>Learning Style</Label>
-                                <div className="mt-2 space-y-2">
-                                    {learningStyles.map((style) => (
-                                        <div key={style.value} className="flex items-center space-x-2">
-                                            <Checkbox
-                                                id={style.value}
-                                                checked={form.data.learning_style.includes(style.value)}
-                                                onCheckedChange={(checked) => {
-                                                    if (checked) {
-                                                        form.setData('learning_style', [...form.data.learning_style, style.value]);
-                                                    } else {
-                                                        form.setData('learning_style', form.data.learning_style.filter((s: string) => s !== style.value));
-                                                    }
-                                                }}
-                                            />
-                                            <Label htmlFor={style.value} className="text-sm">
-                                                {style.label}
-                                            </Label>
-                                        </div>
-                                    ))}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <UserIcon className="w-5 h-5" />
+                                Learning Preferences
+                            </CardTitle>
+                            <CardDescription>
+                                Customize your learning style and goals
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <Label className="text-sm font-medium mb-3 block">Learning Style</Label>
+                                    <div className="space-y-2">
+                                        {[
+                                            { value: 'visual', label: 'Visual' },
+                                            { value: 'auditory', label: 'Auditory' },
+                                            { value: 'reading', label: 'Reading/Writing' },
+                                            { value: 'kinesthetic', label: 'Kinesthetic' }
+                                        ].map((style) => (
+                                            <div key={style.value} className="flex items-center space-x-2">
+                                                <Checkbox
+                                                    id={style.value}
+                                                    checked={form.data.learning_style?.includes(style.value)}
+                                                    onCheckedChange={(checked) => {
+                                                        const currentStyles = form.data.learning_style || [];
+                                                        if (checked) {
+                                                            form.setData('learning_style', [...currentStyles, style.value]);
+                                                        } else {
+                                                            form.setData('learning_style', currentStyles.filter((s: string) => s !== style.value));
+                                                        }
+                                                    }}
+                                                />
+                                                <Label htmlFor={style.value} className="text-sm">{style.label}</Label>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    {form.errors.learning_style && (
+                                        <p className="text-sm text-destructive">{form.errors.learning_style}</p>
+                                    )}
                                 </div>
-                                <InputError message={form.errors.learning_style} />
+
+                                <div className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="study_goal">Study Goal</Label>
+                                        <Input
+                                            id="study_goal"
+                                            value={form.data.study_goal}
+                                            onChange={(e) => form.setData('study_goal', e.target.value)}
+                                            placeholder="e.g., Prepare for final exams, Learn new skills"
+                                        />
+                                        {form.errors.study_goal && (
+                                            <p className="text-sm text-destructive">{form.errors.study_goal}</p>
+                                        )}
+                                    </div>
+
+                                    <div>
+                                        <Label htmlFor="timezone">Timezone</Label>
+                                        <Input
+                                            id="timezone"
+                                            value={form.data.timezone}
+                                            onChange={(e) => form.setData('timezone', e.target.value)}
+                                            placeholder="e.g., Asia/Yangon"
+                                        />
+                                        {form.errors.timezone && (
+                                            <p className="text-sm text-destructive">{form.errors.timezone}</p>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
+                        </CardContent>
+                    </Card>
 
-                            <div>
-                                <Label htmlFor="timezone">Timezone</Label>
-                                <Input
-                                    id="timezone"
-                                    value={form.data.timezone}
-                                    onChange={(e) => form.setData('timezone', e.target.value)}
-                                    placeholder="e.g., Asia/Yangon"
-                                />
-                                <InputError message={form.errors.timezone} />
-                            </div>
-                        </div>
-                    </div>
+                    {/* Hidden field for plan regeneration */}
+                    <input
+                        type="hidden"
+                        name="regenerate_plan"
+                        value={form.data.regenerate_plan ? '1' : '0'}
+                    />
 
-                    {/* Study Plan Options */}
-                    {activePlan && (
-                        <div className="space-y-4">
-                            <h3 className="text-lg font-semibold">Study Plan Options</h3>
-
-                            <div className="flex items-center space-x-2">
-                                <Checkbox
-                                    id="regenerate_plan"
-                                    checked={form.data.regenerate_plan}
-                                    onCheckedChange={(checked) => form.setData('regenerate_plan', checked as boolean)}
-                                />
-                                <Label htmlFor="regenerate_plan" className="text-sm">
-                                    Generate a new study plan with these preferences
-                                </Label>
-                            </div>
-                            <p className="text-sm text-gray-600">
-                                This will create a new study schedule based on your updated preferences. Your current plan will be deactivated.
-                            </p>
-                        </div>
-                    )}
-
-                    {/* Actions */}
-                    <div className="flex justify-end gap-4 pt-6 border-t">
+                    {/* Form Actions */}
+                    <div className="flex items-center justify-between pt-4 border-t">
+                        <p className="text-sm text-muted-foreground">
+                            Changes are saved automatically. Click "Generate Schedule" to create a new study plan.
+                        </p>
                         <Button
                             type="submit"
                             disabled={form.processing}
                             className="flex items-center gap-2"
                         >
                             <Save className="h-4 w-4" />
-                            {form.processing ? 'Saving...' : 'Save Preferences'}
+                            {form.processing ? 'Saving...' : 'Save Changes'}
                         </Button>
                     </div>
                 </form>
+
+                {/* Reset Options Dialog */}
+                {showResetDialog && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+                        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                            <h3 className="text-lg font-semibold mb-4">Choose Your Reset Option</h3>
+
+                            <div className="space-y-4 mb-6">
+                                <div className="p-4 border rounded-lg">
+                                    <h4 className="font-medium text-green-700 mb-2">🔄 Recommended: Clear Subjects Only</h4>
+                                    <p className="text-sm text-gray-600 mb-2">
+                                        Remove all subjects and start fresh, but keep your study schedule preferences.
+                                    </p>
+                                    <ul className="text-xs text-gray-500 space-y-1">
+                                        <li>✅ Keeps: Study hours, productivity time, learning style</li>
+                                        <li>✅ Keeps: Study goal, timezone, other settings</li>
+                                        <li>❌ Removes: All subjects and difficulty settings</li>
+                                        <li>🔄 Action: Add new subjects → Generate new schedule</li>
+                                    </ul>
+                                </div>
+
+                                <div className="p-4 border rounded-lg">
+                                    <h4 className="font-medium text-red-700 mb-2">⚠️ Complete Reset</h4>
+                                    <p className="text-sm text-gray-600 mb-2">
+                                        Start completely over with onboarding. This removes everything.
+                                    </p>
+                                    <ul className="text-xs text-gray-500 space-y-1">
+                                        <li>❌ Removes: All subjects and preferences</li>
+                                        <li>❌ Removes: Study hours, learning style, goals</li>
+                                        <li>❌ Deactivates: Current study plan</li>
+                                        <li>🔄 Action: Go through full onboarding again</li>
+                                    </ul>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <Button
+                                    onClick={handleRecommendedReset}
+                                    className="flex-1 bg-green-600 hover:bg-green-700"
+                                >
+                                    Clear Subjects Only
+                                </Button>
+                                <Button
+                                    onClick={handleReset}
+                                    variant="destructive"
+                                    className="flex-1"
+                                >
+                                    Complete Reset
+                                </Button>
+                                <Button
+                                    onClick={() => setShowResetDialog(false)}
+                                    variant="outline"
+                                    className="flex-1"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </AppLayout>
     );

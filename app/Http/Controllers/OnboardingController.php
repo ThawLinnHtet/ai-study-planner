@@ -112,6 +112,8 @@ class OnboardingController extends Controller
             }
 
             $data = $request->validate([
+                'subjects' => ['required', 'array', 'min:1', 'max:15'],
+                'subjects.*' => ['required', 'string', 'min:2', 'max:100'],
                 'exam_dates' => ['required', 'array'],
                 'exam_dates.*' => [
                     'nullable',
@@ -126,19 +128,35 @@ class OnboardingController extends Controller
                 'exam_dates.*.before' => 'Exam dates must be within the next 5 years.',
             ]);
 
-            $subjects = is_string($user->subjects) ? json_decode($user->subjects, true) : ($user->subjects ?? []);
+            // Process subjects from current form data (not database)
+            $subjects = collect($data['subjects'])
+                ->map(fn (string $s) => trim($s))
+                ->filter(fn (string $s) => $s !== '')
+                ->filter(fn (string $s) => preg_match('/[a-zA-Z]/', $s))
+                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, "UTF-8"))
+                ->unique(fn (string $s) => mb_strtolower($s, 'UTF-8'))
+                ->values()
+                ->all();
+
             // Keep only subjects that have a non-empty date set (do not store null in DB)
             $examDates = collect($data['exam_dates'] ?? [])
                 ->filter(fn ($date, $subject) => in_array($subject, $subjects) && $date !== null && $date !== '')
                 ->all();
 
             $difficulties = collect($data['subject_difficulties'] ?? [])
-                ->filter(fn ($diff, $subject) => in_array($subject, $subjects))
+                ->filter(function ($diff, $subject) use ($subjects) {
+                    // Case-insensitive comparison to handle "and" vs "And"
+                    $normalizedSubject = strtolower($subject);
+                    $normalizedSubjects = array_map('strtolower', $subjects);
+                    $inSubjects = in_array($normalizedSubject, $normalizedSubjects);
+                    return $inSubjects;
+                })
                 ->map(fn ($d) => is_numeric($d) ? (int) max(1, min(3, (int) $d)) : null)
                 ->filter(fn ($d) => $d !== null)
                 ->all();
 
             $user->forceFill([
+                'subjects' => json_encode($subjects), // Save current subjects from form
                 'exam_dates' => $examDates,
                 'subject_difficulties' => $difficulties,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 4),
@@ -187,6 +205,9 @@ class OnboardingController extends Controller
             $user->forceFill([
                 'daily_study_hours' => $validation['recommended_hours'],
                 'productivity_peak' => $peakTime,
+                // Preserve existing subjects and difficulties
+                'subjects' => $user->subjects,
+                'subject_difficulties' => $user->subject_difficulties,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 5),
             ])->save();
 
@@ -210,6 +231,9 @@ class OnboardingController extends Controller
                 'learning_style' => $data['learning_style'],
                 'study_goal' => $data['study_goal'],
                 'timezone' => $timezone,
+                // Preserve existing subjects and difficulties
+                'subjects' => $user->subjects,
+                'subject_difficulties' => $user->subject_difficulties,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 6),
             ])->save();
 

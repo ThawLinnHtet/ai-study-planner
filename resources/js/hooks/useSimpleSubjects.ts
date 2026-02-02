@@ -1,166 +1,132 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// API functions
+const fetchSubjects = async () => {
+    const response = await fetch('/api/subjects');
+    if (!response.ok) {
+        throw new Error('Failed to fetch subjects');
+    }
+    return response.json();
+};
+
+const searchSubjectsAPI = async (query: string) => {
+    const response = await fetch(`/api/subjects/search?q=${encodeURIComponent(query)}`);
+    if (!response.ok) {
+        throw new Error('Failed to search subjects');
+    }
+    return response.json();
+};
+
+const addSubjectAPI = async (name: string) => {
+    const response = await fetch('/api/subjects', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        body: JSON.stringify({ name: name.trim() }),
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add custom subject');
+    }
+
+    return response.json();
+};
 
 export function useSimpleSubjects() {
-    const [suggestions, setSuggestions] = useState<string[]>([]);
-    const [customSubjects, setCustomSubjects] = useState<string[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
 
-    // Essential professional subjects for key fields and roles
-    const commonSubjects = [
-        // Technology & Engineering
-        'Artificial Intelligence',
-        'Data Science',
-        'Cybersecurity',
-        'Software Engineering',
-        'Web Development',
-        'Mobile Development',
-        'UI/UX Design',
-        'Cloud Computing',
-        'DevOps',
+    // Query for all subjects
+    const {
+        data: subjectsData,
+        isLoading: subjectsLoading,
+        error: subjectsError,
+    } = useQuery({
+        queryKey: ['subjects'],
+        queryFn: fetchSubjects,
+        staleTime: 10 * 60 * 1000, // 10 minutes
+        gcTime: 15 * 60 * 1000, // 15 minutes (formerly cacheTime)
+    });
 
-        // Business & Finance
-        'Business Administration',
-        'Financial Analysis',
-        'Marketing',
-        'Accounting',
-        'Project Management',
-        'Digital Marketing',
-        'Supply Chain Management',
-        'Human Resources',
+    // Query for search suggestions
+    const useSearchSuggestions = (query: string) => {
+        return useQuery({
+            queryKey: ['subjects', 'search', query],
+            queryFn: () => searchSubjectsAPI(query),
+            enabled: query.trim().length > 0,
+            staleTime: 5 * 60 * 1000, // 5 minutes
+        });
+    };
 
-        // Healthcare & Medicine
-        'Medicine',
-        'Nursing',
-        'Public Health',
-        'Biotechnology',
-        'Healthcare Administration',
+    // Mutation for adding custom subjects
+    const addSubjectMutation = useMutation({
+        mutationFn: addSubjectAPI,
+        onMutate: async (newSubject) => {
+            // Cancel any outgoing refetches
+            await queryClient.cancelQueries({ queryKey: ['subjects'] });
 
-        // Education & Academia
-        'Education Leadership',
-        'Curriculum Development',
-        'Educational Technology',
-        'Higher Education',
+            // Snapshot the previous value
+            const previousSubjects = queryClient.getQueryData(['subjects']);
 
-        // Law & Legal Studies
-        'Corporate Law',
-        'International Law',
-        'Legal Studies',
-        'Compliance',
-
-        // Creative Arts & Design
-        'Graphic Design',
-        'Fashion Design',
-        'Interior Design',
-        'Animation',
-        'Film Production',
-        'Creative Writing',
-        'Journalism',
-
-        // Sciences & Research
-        'Physics',
-        'Chemistry',
-        'Biology',
-        'Environmental Science',
-        'Mathematics',
-        'Statistics',
-
-        // Social Sciences
-        'Psychology',
-        'Sociology',
-        'Political Science',
-        'Economics',
-
-        // Professional Development
-        'Leadership Development',
-        'Career Development',
-        'Public Speaking',
-        'Negotiation Skills',
-
-        // Advanced Technologies
-        'Machine Learning',
-        'Blockchain',
-        'Robotics',
-        'Augmented Reality',
-        'Virtual Reality',
-
-        // Industry-Specific
-        'Hospitality Management',
-        'Sports Management',
-        'Event Management',
-        'Government Administration'
-    ];
-
-    const searchSubjects = useCallback(async (query: string) => {
-        if (!query.trim()) {
-            setSuggestions([]);
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
-        try {
-            // Try API first (if Laravel is running)
-            const response = await fetch(`/api/subjects/search?q=${encodeURIComponent(query)}`);
-            if (response.ok) {
-                const data = await response.json();
-                setSuggestions(data.subjects || []);
-                return;
-            }
-        } catch (err) {
-            // API failed - use local fallback
-        }
-
-        // Always use local fallback as primary (fast and reliable)
-        const filtered = commonSubjects.filter(subject =>
-            subject.toLowerCase().includes(query.toLowerCase())
-        );
-
-        setSuggestions(filtered);
-        setLoading(false);
-    }, []);
-
-    const addCustomSubject = useCallback(async (name: string) => {
-        try {
-            // Add to database
-            const response = await fetch('/api/subjects', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                },
-                body: JSON.stringify({ name: name.trim() }),
+            // Optimistically update to the new value
+            queryClient.setQueryData(['subjects'], (old: any) => {
+                if (old?.subjects) {
+                    return {
+                        ...old,
+                        subjects: [...old.subjects, newSubject.trim()]
+                    };
+                }
+                return old;
             });
 
-            if (response.ok) {
-                const result = await response.json();
+            return { previousSubjects };
+        },
+        onError: (err, newSubject, context) => {
+            // Rollback on error
+            queryClient.setQueryData(['subjects'], context?.previousSubjects);
+        },
+        onSuccess: () => {
+            // Invalidate all subjects queries to refresh data
+            queryClient.invalidateQueries({ queryKey: ['subjects'] });
+        },
+        onSettled: () => {
+            // Always refetch after error or success
+            queryClient.invalidateQueries({ queryKey: ['subjects'] });
+        },
+    });
 
-                // Add to local custom subjects for immediate use
-                if (!customSubjects.includes(name.trim())) {
-                    setCustomSubjects(prev => [...prev, name.trim()]);
-                }
+    // Legacy compatibility functions
+    const searchSubjects = async (query: string) => {
+        // This is handled by the useSearchSuggestions hook now
+        console.log('searchSubjects is deprecated, use useSearchSuggestions hook instead');
+    };
 
-                return { name, isCustom: true, addedToDb: true };
-            } else {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to add custom subject');
-            }
+    const addCustomSubject = async (name: string) => {
+        try {
+            const result = await addSubjectMutation.mutateAsync(name);
+            return { name, isCustom: true, addedToDb: true };
         } catch (err) {
-            // Still add to local custom subjects even if API fails
-            if (!customSubjects.includes(name.trim())) {
-                setCustomSubjects(prev => [...prev, name.trim()]);
-            }
+            console.log('Failed to add custom subject:', err);
             return { name, isCustom: true, addedToDb: false };
         }
-    }, [customSubjects]);
+    };
+
+    const allSubjects = subjectsData?.subjects || [];
+    const suggestions: string[] = []; // This is now handled by useSearchSuggestions hook
+    const loading = subjectsLoading;
+    const error = subjectsError?.message || null;
 
     return {
         suggestions,
-        customSubjects,
+        allSubjects,
         loading,
         error,
         searchSubjects,
         addCustomSubject,
+        useSearchSuggestions, // New hook for search functionality
+        addSubjectMutation, // Expose mutation for more control
     };
 }
