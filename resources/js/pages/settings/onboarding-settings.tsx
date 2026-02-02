@@ -4,22 +4,25 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import { toast } from 'sonner';
 import { useState, useEffect } from 'react';
 import {
     Settings,
-    RotateCcw,
     Save,
     AlertTriangle,
     BookOpen,
     Clock,
     User as UserIcon,
     Brain,
-    X
+    X,
+    Sunrise,
+    Sun,
+    Sunset,
+    Moon
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import type { BreadcrumbItem, SharedData } from '@/types';
@@ -49,13 +52,6 @@ const peakTimes = [
     { value: 'night', label: 'Night (9PM - 2AM)' },
 ];
 
-const commonSubjects = [
-    'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Computer Science',
-    'Programming', 'Web Development', 'Data Science', 'Machine Learning',
-    'English', 'History', 'Geography', 'Economics', 'Psychology',
-    'Philosophy', 'Art', 'Music', 'Languages', 'Business'
-];
-
 interface User {
     id: number;
     name: string;
@@ -82,7 +78,6 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     const flash = page.props.flash;
     const [newSubject, setNewSubject] = useState('');
     const [showResetConfirm, setShowResetConfirm] = useState(false);
-    const [showResetDialog, setShowResetDialog] = useState(false);
     const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
 
     // TanStack Query for subjects
@@ -131,90 +126,38 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
         });
     }, [user]);
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        form.put('/settings/onboarding', {
-            onError: (errors) => {
-                toast.error('Validation failed: ' + Object.values(errors).join(', '));
-            },
-            onSuccess: () => {
-                // Force a complete page reload to get fresh user data
-                window.location.href = '/settings/onboarding';
-            }
-        });
-    };
-
-    const handleReset = () => {
-        if (confirm('Are you sure you want to reset your onboarding? This will clear all your study preferences and deactivate your current study plan.')) {
-            window.location.href = '/settings/onboarding/reset';
-        }
-    };
-
-    const handleRecommendedReset = () => {
-        // Clear all subjects but keep other settings
-        form.setData('subjects', []);
-        form.setData('subject_difficulties', {});
-        setSubjectInputValue('');
-        setSubjectsKey(prev => prev + 1);
-        setShowResetDialog(false);
-        toast.success('Subjects cleared. You can now add new subjects and generate a fresh schedule.');
-    };
-
     const addSubject = async (subjectName: string) => {
         if (!form.data.subjects.includes(subjectName)) {
-            // Check if this is a custom subject (not in the 60 predefined professional subjects)
-            const predefinedSubjects = [
-                'Artificial Intelligence', 'Data Science', 'Cybersecurity', 'Software Engineering',
-                'Web Development', 'Mobile Development', 'UI/UX Design', 'Cloud Computing', 'DevOps',
-                'Business Administration', 'Financial Analysis', 'Marketing', 'Accounting',
-                'Project Management', 'Digital Marketing', 'Supply Chain Management', 'Human Resources',
-                'Medicine', 'Nursing', 'Public Health', 'Biotechnology', 'Healthcare Administration',
-                'Education Leadership', 'Curriculum Development', 'Educational Technology', 'Higher Education',
-                'Corporate Law', 'International Law', 'Legal Studies', 'Compliance',
-                'Graphic Design', 'Fashion Design', 'Interior Design', 'Animation',
-                'Film Production', 'Creative Writing', 'Journalism',
-                'Physics', 'Chemistry', 'Biology', 'Environmental Science', 'Mathematics', 'Statistics',
-                'Psychology', 'Sociology', 'Political Science', 'Economics',
-                'Leadership Development', 'Career Development', 'Public Speaking', 'Negotiation Skills',
-                'Machine Learning', 'Blockchain', 'Robotics', 'Augmented Reality', 'Virtual Reality',
-                'Hospitality Management', 'Sports Management', 'Event Management', 'Government Administration'
-            ];
-
+            // Check if this is a custom subject (not in the dynamic subjects list)
+            const predefinedSubjects = allSubjects || [];
             const isCustomSubject = !predefinedSubjects.includes(subjectName);
 
-            // If it's a custom subject, add to database first
-            if (isCustomSubject) {
-                try {
-                    await addCustomSubject(subjectName);
-                } catch (error) {
-                    // Still add it locally even if API fails
-                }
-            }
-
+            // OPTIMISTIC UPDATE: Update UI immediately
             const newSubjects = [...form.data.subjects, subjectName];
-
-            // Use direct data assignment instead of setData
-            form.data.subjects = newSubjects;
-            form.data.subject_difficulties = {
+            const newDifficulties = {
                 ...form.data.subject_difficulties,
                 [subjectName]: 2, // Default difficulty
             };
 
+            // Update form data immediately
+            form.setData('subjects', newSubjects);
+            form.setData('subject_difficulties', newDifficulties);
+
             setSubjectInputValue('');
             setNewSubject('');
-
-            // Force form to recognize the change
-            form.setData('subjects', newSubjects);
-            form.setData('subject_difficulties', form.data.subject_difficulties);
 
             // Force re-render of subjects list
             setSubjectsKey(prev => prev + 1);
 
-            // Trigger immediate search to refresh suggestions
-            if (subjectInputValue.trim()) {
-                // This will trigger the useSearchSuggestions hook to refresh
-                setSubjectInputValue('');
-                setTimeout(() => setSubjectInputValue(subjectName[0]), 100);
+            // Add to database in background (non-blocking)
+            if (isCustomSubject) {
+                addCustomSubject(subjectName)
+                    .then(() => {
+                        // Success - subject is already in UI
+                    })
+                    .catch((error) => {
+                        console.log('Failed to add custom subject to DB:', error);
+                    });
             }
         }
     };
@@ -229,6 +172,27 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
         // Force re-render
         setSubjectsKey(prev => prev + 1);
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+
+        // Set regenerate_plan flag before submitting
+        form.setData('regenerate_plan', true);
+
+        // Submit the form
+        form.put('/settings/onboarding', {
+            onSuccess: () => {
+                toast.success('Study preferences updated and new schedule generated!');
+                // Reset the flag after successful submission
+                form.setData('regenerate_plan', false);
+            },
+            onError: (errors) => {
+                toast.error('Failed to save preferences: ' + Object.values(errors).join(', '));
+                // Reset the flag on error
+                form.setData('regenerate_plan', false);
+            }
+        });
     };
 
     const updateSubjectDifficulty = (subject: string, difficulty: number) => {
@@ -246,30 +210,10 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-2xl font-bold">Study Preferences</h1>
-                        <p className="text-muted-foreground">Manage your subjects and study settings</p>
-                        <p className="text-sm text-muted-foreground mt-2">
-                            Update your learning preferences and generate new study plans
+                        <h3 className="text-lg font-semibold">Study Schedule</h3>
+                        <p className="text-sm text-muted-foreground">
+                            Update your preferences and generate a new study plan
                         </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                        <Button
-                            onClick={() => {
-                                form.setData('regenerate_plan', true);
-                                form.submit();
-                            }}
-                            className="bg-primary hover:bg-primary/90"
-                        >
-                            <Brain className="w-4 h-4 mr-2" />
-                            Generate Schedule
-                        </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => setShowResetDialog(true)}
-                        >
-                            <RotateCcw className="w-4 h-4 mr-2" />
-                            Start Over
-                        </Button>
                     </div>
                 </div>
 
@@ -310,13 +254,28 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                                                         value={form.data.subject_difficulties[subject]?.toString() || '2'}
                                                         onValueChange={(value) => updateSubjectDifficulty(subject, parseInt(value))}
                                                     >
-                                                        <SelectTrigger className="w-24 h-8">
+                                                        <SelectTrigger className="w-28 h-8">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent>
-                                                            <SelectItem value="1">Easy</SelectItem>
-                                                            <SelectItem value="2">Medium</SelectItem>
-                                                            <SelectItem value="3">Hard</SelectItem>
+                                                            <SelectItem value="1">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                                                                    Easy
+                                                                </div>
+                                                            </SelectItem>
+                                                            <SelectItem value="2">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                                                                    Medium
+                                                                </div>
+                                                            </SelectItem>
+                                                            <SelectItem value="3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                                                                    Hard
+                                                                </div>
+                                                            </SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                     <Button
@@ -391,23 +350,36 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                                 </div>
 
                                 <div>
-                                    <Label htmlFor="productivity_peak">Peak Productivity Time</Label>
-                                    <Select
-                                        value={form.data.productivity_peak}
-                                        onValueChange={(value) => form.setData('productivity_peak', value)}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select your peak time" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="morning">Morning (6AM - 12PM)</SelectItem>
-                                            <SelectItem value="afternoon">Afternoon (12PM - 6PM)</SelectItem>
-                                            <SelectItem value="evening">Evening (6PM - 10PM)</SelectItem>
-                                            <SelectItem value="night">Night (10PM - 6AM)</SelectItem>
-                                        </SelectContent>
-                                    </Select>
+                                    <Label className="text-sm font-medium">When are you most focused?</Label>
+                                    <p className="text-xs text-muted-foreground mb-3">AI will schedule intense tasks during these hours.</p>
+
+                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                                        {[
+                                            { id: 'morning', label: 'Morning', icon: <Sunrise className="size-4" />, desc: '6am - 12pm' },
+                                            { id: 'afternoon', label: 'Afternoon', icon: <Sun className="size-4" />, desc: '12pm - 5pm' },
+                                            { id: 'evening', label: 'Evening', icon: <Sunset className="size-4" />, desc: '5pm - 9pm' },
+                                            { id: 'night', label: 'Night', icon: <Moon className="size-4" />, desc: '9pm - 2am' },
+                                        ].map((peak) => (
+                                            <button
+                                                key={peak.id}
+                                                type="button"
+                                                onClick={() => form.setData('productivity_peak', peak.id)}
+                                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all ${form.data.productivity_peak === peak.id
+                                                    ? "bg-primary/10 border-primary ring-1 ring-primary shadow-sm"
+                                                    : "bg-background border-border hover:border-primary/50"
+                                                    }`}
+                                            >
+                                                <div className={`p-1.5 rounded-lg ${form.data.productivity_peak === peak.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                                                    }`}>
+                                                    {peak.icon}
+                                                </div>
+                                                <span className="text-xs font-medium">{peak.label}</span>
+                                                <span className="text-xs text-muted-foreground">{peak.desc}</span>
+                                            </button>
+                                        ))}
+                                    </div>
                                     {form.errors.productivity_peak && (
-                                        <p className="text-sm text-destructive">{form.errors.productivity_peak}</p>
+                                        <p className="text-sm text-destructive mt-2">{form.errors.productivity_peak}</p>
                                     )}
                                 </div>
                             </div>
@@ -497,80 +469,20 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                     />
 
                     {/* Form Actions */}
-                    <div className="flex items-center justify-between pt-4 border-t">
-                        <p className="text-sm text-muted-foreground">
-                            Changes are saved automatically. Click "Generate Schedule" to create a new study plan.
-                        </p>
-                        <Button
-                            type="submit"
-                            disabled={form.processing}
-                            className="flex items-center gap-2"
-                        >
-                            <Save className="h-4 w-4" />
-                            {form.processing ? 'Saving...' : 'Save Changes'}
-                        </Button>
+                    <div className="pt-4 border-t">
+                        <div className="flex items-center justify-end">
+                            <Button
+                                type="submit"
+                                className="bg-primary hover:bg-primary/90"
+                                size="sm"
+                            >
+                                <Brain className="w-4 h-4 mr-2" />
+                                Generate Schedule
+                            </Button>
+                        </div>
                     </div>
                 </form>
 
-                {/* Reset Options Dialog */}
-                {showResetDialog && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-                        <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                            <h3 className="text-lg font-semibold mb-4">Choose Your Reset Option</h3>
-
-                            <div className="space-y-4 mb-6">
-                                <div className="p-4 border rounded-lg">
-                                    <h4 className="font-medium text-green-700 mb-2">🔄 Recommended: Clear Subjects Only</h4>
-                                    <p className="text-sm text-gray-600 mb-2">
-                                        Remove all subjects and start fresh, but keep your study schedule preferences.
-                                    </p>
-                                    <ul className="text-xs text-gray-500 space-y-1">
-                                        <li>✅ Keeps: Study hours, productivity time, learning style</li>
-                                        <li>✅ Keeps: Study goal, timezone, other settings</li>
-                                        <li>❌ Removes: All subjects and difficulty settings</li>
-                                        <li>🔄 Action: Add new subjects → Generate new schedule</li>
-                                    </ul>
-                                </div>
-
-                                <div className="p-4 border rounded-lg">
-                                    <h4 className="font-medium text-red-700 mb-2">⚠️ Complete Reset</h4>
-                                    <p className="text-sm text-gray-600 mb-2">
-                                        Start completely over with onboarding. This removes everything.
-                                    </p>
-                                    <ul className="text-xs text-gray-500 space-y-1">
-                                        <li>❌ Removes: All subjects and preferences</li>
-                                        <li>❌ Removes: Study hours, learning style, goals</li>
-                                        <li>❌ Deactivates: Current study plan</li>
-                                        <li>🔄 Action: Go through full onboarding again</li>
-                                    </ul>
-                                </div>
-                            </div>
-
-                            <div className="flex gap-3">
-                                <Button
-                                    onClick={handleRecommendedReset}
-                                    className="flex-1 bg-green-600 hover:bg-green-700"
-                                >
-                                    Clear Subjects Only
-                                </Button>
-                                <Button
-                                    onClick={handleReset}
-                                    variant="destructive"
-                                    className="flex-1"
-                                >
-                                    Complete Reset
-                                </Button>
-                                <Button
-                                    onClick={() => setShowResetDialog(false)}
-                                    variant="outline"
-                                    className="flex-1"
-                                >
-                                    Cancel
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         </AppLayout>
     );
