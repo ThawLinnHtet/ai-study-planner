@@ -1,4 +1,4 @@
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -177,17 +177,34 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Set regenerate_plan flag before submitting
-        form.setData('regenerate_plan', true);
+        // Debug: Log current form data before submission
+        console.log('=== GENERATE SCHEDULE DEBUG ===');
+        console.log('Current form data:', form.data);
+        console.log('Subjects:', form.data.subjects);
+        console.log('Subject difficulties:', form.data.subject_difficulties);
+        console.log('Daily study hours:', form.data.daily_study_hours);
+        console.log('Productivity peak:', form.data.productivity_peak);
+        console.log('Learning style:', form.data.learning_style);
+        console.log('Study goal:', form.data.study_goal);
+        console.log('Timezone:', form.data.timezone);
 
-        // Submit the form
-        form.put('/settings/onboarding', {
+        // Manually create the data object with regenerate_plan set to true
+        const submitData = {
+            ...form.data,
+            regenerate_plan: true
+        };
+
+        console.log('🔄 Submitting data with regenerate_plan:', submitData.regenerate_plan);
+
+        // Use router.visit for direct submission with custom data
+        router.put('/settings/onboarding', submitData, {
             onSuccess: () => {
-                toast.success('Study preferences updated and new schedule generated!');
+                console.log('✅ Preferences saved and schedule generated!');
                 // Reset the flag after successful submission
                 form.setData('regenerate_plan', false);
             },
-            onError: (errors) => {
+            onError: (errors: any) => {
+                console.log('❌ Failed to save preferences:', errors);
                 toast.error('Failed to save preferences: ' + Object.values(errors).join(', '));
                 // Reset the flag on error
                 form.setData('regenerate_plan', false);

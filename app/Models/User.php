@@ -23,6 +23,16 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'onboarding_completed',
+        'daily_study_hours',
+        'learning_style',
+        'timezone',
+        'subjects',
+        'exam_dates',
+        'onboarding_step',
+        'study_goal',
+        'productivity_peak',
+        'subject_difficulties',
     ];
 
     /**

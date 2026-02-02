@@ -56,6 +56,11 @@ class OnboardingSettingsController extends Controller
     {
         $user = $request->user();
 
+        // DEBUG: Log incoming request data
+        \Log::info('=== SETTINGS UPDATE DEBUG ===');
+        \Log::info('Request data', $request->all());
+        \Log::info('Regenerate plan flag', ['regenerate_plan' => $request->input('regenerate_plan')]);
+
         $validated = $request->validate([
             'subjects' => ['required', 'array', 'min:1'],
             'subjects.*' => ['required', 'string', 'max:255'],
@@ -99,6 +104,9 @@ class OnboardingSettingsController extends Controller
         }
 
         // Update user settings
+        \Log::info('=== UPDATING USER SETTINGS ===');
+        \Log::info('Validated data', $validated);
+        
         $user->update([
             'subjects' => $validated['subjects'],
             'exam_dates' => $validated['exam_dates'] ?? [],
@@ -110,29 +118,62 @@ class OnboardingSettingsController extends Controller
             'timezone' => $validated['timezone'],
         ]);
 
+        \Log::info('✅ User settings updated successfully');
+
+        // Verify the data was actually saved
+        $user->refresh();
+        \Log::info('=== VERIFYING SAVED DATA ===');
+        \Log::info('Saved subjects', ['subjects' => $user->subjects]);
+        \Log::info('Saved subject_difficulties', ['subject_difficulties' => $user->subject_difficulties]);
+        \Log::info('Saved daily_study_hours', ['daily_study_hours' => $user->daily_study_hours]);
+        \Log::info('Saved productivity_peak', ['productivity_peak' => $user->productivity_peak]);
+        \Log::info('Saved learning_style', ['learning_style' => $user->learning_style]);
+        \Log::info('Saved study_goal', ['study_goal' => $user->study_goal]);
+        \Log::info('Saved timezone', ['timezone' => $user->timezone]);
+
         // Regenerate study plan if requested
         if ($validated['regenerate_plan'] ?? false) {
+            \Log::info('=== GENERATING NEW STUDY PLAN ===');
+            
             try {
-                // Pass fresh updated data directly to AI agent
+                // Refresh user to get the latest saved data
+                $user->refresh();
+                
+                // Use the fresh data from database instead of request data
                 $planData = [
-                    'subjects' => $validated['subjects'],
-                    'exam_dates' => $validated['exam_dates'] ?? [],
-                    'subject_difficulties' => $validated['subject_difficulties'] ?? [],
-                    'daily_study_hours' => $validated['daily_study_hours'],
-                    'productivity_peak' => $validated['productivity_peak'],
-                    'learning_style' => $validated['learning_style'],
-                    'study_goal' => $validated['study_goal'],
-                    'timezone' => $validated['timezone'],
+                    'subjects' => $user->subjects,
+                    'exam_dates' => $user->exam_dates ?? [],
+                    'subject_difficulties' => $user->subject_difficulties ?? [],
+                    'daily_study_hours' => $user->daily_study_hours,
+                    'productivity_peak' => $user->productivity_peak,
+                    'learning_style' => $user->learning_style,
+                    'study_goal' => $user->study_goal,
+                    'timezone' => $user->timezone,
                 ];
                 
+                \Log::info('Plan data for AI (from fresh user data)', $planData);
+                
                 $this->studyPlanService->generatePlanWithData($user, $planData);
+                
+                \Log::info('✅ Study plan generated successfully');
+
+                // Verify the study plan was actually created
+                $newPlan = $user->studyPlans()->where('status', 'active')->first();
+                \Log::info('=== VERIFYING NEW STUDY PLAN ===');
+                \Log::info('New plan ID', ['plan_id' => $newPlan ? $newPlan->id : 'null']);
+                \Log::info('New plan title', ['plan_title' => $newPlan ? $newPlan->title : 'null']);
+                \Log::info('New plan status', ['plan_status' => $newPlan ? $newPlan->status : 'null']);
+                \Log::info('New plan created at', ['created_at' => $newPlan ? $newPlan->created_at : 'null']);
                 
                 session()->flash('success', 'Your study preferences have been updated and a new study plan has been generated with your latest preferences!');
                 return redirect()->route('onboarding-settings.edit');
             } catch (\Exception $e) {
+                \Log::error('❌ Failed to generate study plan: ' . $e->getMessage());
                 session()->flash('success', 'Your study preferences have been updated! However, we encountered an error generating a new study plan: ' . $e->getMessage());
                 return redirect()->route('onboarding-settings.edit');
             }
+        } else {
+            \Log::info('No plan regeneration requested');
         }
 
         session()->flash('success', 'Your study preferences have been updated successfully!');
