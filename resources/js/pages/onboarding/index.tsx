@@ -557,7 +557,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                         </Label>
                                                                         <p className="text-xs text-muted-foreground">When is your exam?</p>
                                                                     </div>
-                                                                    <div className="w-full md:w-[220px]">
+                                                                    <div className="w-full md:w-55">
                                                                         <DatePicker
                                                                             id={`subject-${subject}`}
                                                                             value={form.data.exam_dates[subject]}

@@ -348,7 +348,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                 <div className="flex items-center p-4 gap-4">
                                                     <button
                                                         onClick={() => toggleSession(selectedDate, session)}
-                                                        className="flex-shrink-0 transition-transform hover:scale-110"
+                                                        className="shrink-0 transition-transform hover:scale-110"
                                                     >
                                                         {done ? (
                                                             <CheckCircle2 className="w-8 h-8 text-emerald-500 fill-emerald-100" />
