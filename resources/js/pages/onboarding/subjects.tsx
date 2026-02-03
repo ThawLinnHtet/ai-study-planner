@@ -1,15 +1,15 @@
 import { Head, useForm } from '@inertiajs/react';
-import { useState, useEffect, useMemo } from 'react';
 import { X, BookOpen, Atom, Calculator, Globe, Briefcase, Palette, Stethoscope, Building, Gavel, Brain } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
-import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { useSubjects } from '@/hooks/useSubjects';
 import OnboardingLayout from '@/layouts/onboarding-layout';
 import { cn } from '@/lib/utils';
-import { useSubjects } from '@/hooks/useSubjects';
 
 type Subject = {
     id: number;

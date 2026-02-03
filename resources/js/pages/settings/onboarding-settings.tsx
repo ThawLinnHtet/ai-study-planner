@@ -1,16 +1,4 @@
 import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
-import AppLayout from '@/layouts/app-layout';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
-import { DatePicker } from '@/components/ui/date-picker';
-import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
-import { toast } from 'sonner';
-import { useState, useEffect } from 'react';
 import {
     Settings,
     Save,
@@ -26,7 +14,19 @@ import {
     Moon,
     CalendarDays
 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { toast } from 'sonner';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
+import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
+import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem, SharedData } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Models\StudyPlan;
 use App\Services\StudyPlanService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -35,9 +37,104 @@ class StudyPlanController extends Controller
             ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
             : null;
 
+        // If no plan exists but user completed onboarding, create a fallback plan
+        if (!$plan && $user->onboarding_completed) {
+            try {
+                // Try to create a fallback plan if none exists
+                $this->createFallbackPlanIfNeeded($user);
+                
+                // Try to get the plan again
+                $activePlan = $user->studyPlans()
+                    ->where('status', 'active')
+                    ->first();
+                $plan = $activePlan !== null
+                    ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
+                    : null;
+            } catch (\Exception $e) {
+                logger()->error('Failed to create fallback plan for dashboard: ' . $e->getMessage());
+            }
+        }
+
         return Inertia::render('dashboard', [
             'plan' => $plan,
             'completedToday' => $completedSessions,
+            'onboardingCompleted' => $user->onboarding_completed,
+        ]);
+    }
+
+    /**
+     * Create a fallback plan if user has completed onboarding but no plan exists.
+     */
+    private function createFallbackPlanIfNeeded(User $user): void
+    {
+        // Check if user already has any plans
+        $existingPlan = $user->studyPlans()->first();
+        if ($existingPlan) {
+            return; // User already has a plan (maybe archived)
+        }
+
+        $subjects = $user->subjects ?? [];
+        // Ensure subjects is always an array
+        if (is_string($subjects)) {
+            $subjects = json_decode($subjects, true) ?? [];
+        }
+        $dailyHours = $user->daily_study_hours ?? 2;
+        $peakTime = $user->productivity_peak ?? 'morning';
+        
+        if (empty($subjects) || !is_array($subjects)) {
+            return; // No subjects to create plan for
+        }
+
+        // Create a simple schedule
+        $schedule = [];
+        $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        
+        foreach ($days as $day) {
+            $daySessions = [];
+            $subjectIndex = 0;
+            $remainingMinutes = $dailyHours * 60;
+            
+            while ($remainingMinutes > 30 && $subjectIndex < count($subjects)) {
+                $sessionMinutes = min(90, $remainingMinutes);
+                $subject = $subjects[$subjectIndex];
+                
+                $daySessions[] = [
+                    'subject' => $subject,
+                    'topic' => 'Study Session',
+                    'duration_minutes' => $sessionMinutes,
+                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium'
+                ];
+                
+                $remainingMinutes -= $sessionMinutes;
+                $subjectIndex = ($subjectIndex + 1) % count($subjects);
+            }
+            
+            $schedule[$day] = ['sessions' => $daySessions];
+        }
+
+        // Create the study plan
+        StudyPlan::create([
+            'user_id' => $user->id,
+            'title' => 'Basic Study Plan',
+            'goal' => $user->study_goal ?? 'General Study Improvement',
+            'starts_on' => now()->startOfDay(),
+            'ends_on' => now()->addDays(7),
+            'target_hours_per_week' => $dailyHours * 7,
+            'status' => 'active',
+            'preferences' => [
+                'productivity_peak' => $peakTime,
+                'learning_style' => $user->learning_style ?? [],
+            ],
+            'generated_plan' => [
+                'schedule' => $schedule,
+                'strategy_summary' => 'Basic study plan created to help you get started. You can refine this with AI recommendations later.',
+                'weeks' => [
+                    [
+                        'week_start' => now()->startOfDay()->toDateString(),
+                        'schedule' => $schedule,
+                    ]
+                ]
+            ]
         ]);
     }
 

@@ -1,7 +1,13 @@
-import Heading from '@/components/heading';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 import { Head, useForm } from '@inertiajs/react';
+import {
+    format,
+    startOfWeek,
+    addDays,
+    isSameDay,
+    isToday,
+    parseISO,
+    startOfDay
+} from 'date-fns';
 import {
     CheckCircle2,
     Circle,
@@ -16,20 +22,14 @@ import {
     Sliders
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
-import {
-    format,
-    startOfWeek,
-    addDays,
-    isSameDay,
-    isToday,
-    parseISO,
-    startOfDay
-} from 'date-fns';
-import { cn, formatDuration } from '@/lib/utils';
+import Heading from '@/components/heading';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import AppLayout from '@/layouts/app-layout';
+import { cn, formatDuration } from '@/lib/utils';
+import type { BreadcrumbItem } from '@/types';
 
 interface Session {
     subject: string;

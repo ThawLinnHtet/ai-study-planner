@@ -12,7 +12,6 @@ import {
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
-import { useCurrentUrl } from '@/hooks/use-current-url';
 import {
     Sidebar,
     SidebarContent,
@@ -22,6 +21,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
+import { useCurrentUrl } from '@/hooks/use-current-url';
 import { aiTutor, dashboard, progress, quizzes, studyPlanner } from '@/routes';
 import { overview as settingsOverview } from '@/routes/settings';
 import type { NavItem } from '@/types';

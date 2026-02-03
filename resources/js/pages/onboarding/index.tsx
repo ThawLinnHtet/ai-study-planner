@@ -1,19 +1,19 @@
 import { Head, useForm } from '@inertiajs/react';
-import { useEffect, useMemo, useState } from 'react';
 import { X, BookOpen, Atom, Calculator, Globe, Briefcase, Palette, Stethoscope, Building, Gavel, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
-import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
+import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import OnboardingLayout from '@/layouts/onboarding-layout';
 import { cn } from '@/lib/utils';
-import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 
 type OnboardingData = {
     subjects: string[];
@@ -319,7 +319,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         }
 
         form.transform((data) => {
-            let finalSubjects = [...data.subjects];
+            const finalSubjects = [...data.subjects];
 
             if (step === 2 && customSubject.trim()) {
                 const trimmed = customSubject.trim();

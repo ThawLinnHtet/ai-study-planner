@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use App\Services\StudyHoursValidator;
 use App\Services\StudyPlanService;
 use Illuminate\Http\RedirectResponse;
@@ -37,7 +38,7 @@ class OnboardingController extends Controller
             'step' => $step,
             'totalSteps' => self::TOTAL_STEPS,
             'onboarding' => [
-                'subjects' => json_decode($user->subjects ?? '[]', true) ?? [],
+                'subjects' => $user->subjects ?? [],
                 'exam_dates' => $user->exam_dates ?? [],
                 'subject_difficulties' => $user->subject_difficulties ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
@@ -95,7 +96,7 @@ class OnboardingController extends Controller
             }
 
             $user->forceFill([
-                'subjects' => json_encode($subjects),
+                'subjects' => $subjects,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 3),
             ])->save();
 
@@ -162,7 +163,7 @@ class OnboardingController extends Controller
                 ->all();
 
             $user->forceFill([
-                'subjects' => json_encode($subjects), // Save current subjects from form
+                'subjects' => $subjects, // Save current subjects from form
                 'exam_dates' => $examDates,
                 'subject_difficulties' => $difficulties,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 4),
@@ -263,12 +264,89 @@ class OnboardingController extends Controller
         try {
             $this->studyPlanService->generateInitialPlan($user);
         } catch (\Exception $e) {
-            // Log or handle error - we don't want to break the onboarding completion
-            // if AI fails, but user should be notified later or plan generated via queue.
+            // Log the error but don't break onboarding completion
             logger()->error('Failed to generate initial study plan: ' . $e->getMessage());
+            
+            // Create a basic fallback plan if AI fails
+            try {
+                $this->createFallbackPlan($user);
+            } catch (\Exception $fallbackError) {
+                logger()->error('Failed to create fallback plan: ' . $fallbackError->getMessage());
+                // Even if plan creation fails completely, continue with onboarding completion
+            }
         }
 
         return redirect()->route('dashboard');
+    }
+
+    /**
+     * Create a fallback study plan when AI generation fails.
+     */
+    private function createFallbackPlan(User $user): void
+    {
+        $subjects = $user->subjects ?? [];
+        // Ensure subjects is always an array
+        if (is_string($subjects)) {
+            $subjects = json_decode($subjects, true) ?? [];
+        }
+        $dailyHours = $user->daily_study_hours ?? 2;
+        $peakTime = $user->productivity_peak ?? 'morning';
+        
+        if (empty($subjects) || !is_array($subjects)) {
+            return; // No subjects to create plan for
+        }
+
+        // Create a simple schedule
+        $schedule = [];
+        $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        
+        foreach ($days as $day) {
+            $daySessions = [];
+            $subjectIndex = 0;
+            $remainingMinutes = $dailyHours * 60;
+            
+            while ($remainingMinutes > 30 && $subjectIndex < count($subjects)) {
+                $sessionMinutes = min(90, $remainingMinutes);
+                $subject = $subjects[$subjectIndex];
+                
+                $daySessions[] = [
+                    'subject' => $subject,
+                    'topic' => 'Study Session',
+                    'duration_minutes' => $sessionMinutes,
+                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium'
+                ];
+                
+                $remainingMinutes -= $sessionMinutes;
+                $subjectIndex = ($subjectIndex + 1) % count($subjects);
+            }
+            
+            $schedule[$day] = ['sessions' => $daySessions];
+        }
+
+        // Create the study plan
+        \App\Models\StudyPlan::create([
+            'user_id' => $user->id,
+            'title' => 'Basic Study Plan',
+            'goal' => $user->study_goal ?? 'General Study Improvement',
+            'starts_on' => now()->startOfDay(),
+            'ends_on' => now()->addDays(7),
+            'target_hours_per_week' => $dailyHours * 7,
+            'status' => 'active',
+            'preferences' => [
+                'productivity_peak' => $peakTime,
+                'learning_style' => $user->learning_style ?? [],
+            ],
+            'generated_plan' => [
+                'schedule' => $schedule,
+                'strategy_summary' => 'Basic study plan created to help you get started. You can refine this with AI recommendations later.',
+                'weeks' => [
+                    [
+                        'week_start' => now()->startOfDay()->toDateString(),
+                        'schedule' => $schedule,
+                    ]
+                ]
+            ]
+        ]);
     }
 
     public function storeSubjects(Request $request): RedirectResponse

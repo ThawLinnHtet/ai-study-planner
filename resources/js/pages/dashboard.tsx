@@ -1,10 +1,7 @@
 import { Head } from '@inertiajs/react';
-import AppLayout from '@/layouts/app-layout';
-import { dashboard } from '@/routes';
-import type { BreadcrumbItem } from '@/types';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
+import { Link } from '@inertiajs/react';
+import { router } from '@inertiajs/react';
+import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import {
     Zap,
     Calendar,
@@ -15,10 +12,15 @@ import {
     Brain,
     AlertCircle
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Link } from '@inertiajs/react';
-import { format, parseISO, startOfDay, addDays } from 'date-fns';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
+import { dashboard } from '@/routes';
+import type { BreadcrumbItem } from '@/types';
 
 interface Session {
     subject: string;
@@ -46,6 +48,7 @@ interface CompletedSession {
 interface Props {
     plan?: Plan;
     completedToday: CompletedSession[];
+    onboardingCompleted: boolean;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -55,22 +58,83 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function Dashboard({ plan, completedToday }: Props) {
+export default function Dashboard({ plan, completedToday, onboardingCompleted }: Props) {
+    const [refreshCount, setRefreshCount] = useState(0);
+    const [isChecking, setIsChecking] = useState(false);
+
+    // Auto-refresh to check for plan creation (only if onboarding is completed)
+    useEffect(() => {
+        if (!plan && onboardingCompleted && refreshCount < 10) { // Check up to 10 times
+            const timer = setTimeout(() => {
+                setIsChecking(true);
+                router.reload({ only: ['plan'] });
+                setRefreshCount(prev => prev + 1);
+            }, 3000); // Check every 3 seconds
+
+            return () => clearTimeout(timer);
+        }
+    }, [plan, onboardingCompleted, refreshCount]);
+
     if (!plan) {
         return (
             <AppLayout breadcrumbs={breadcrumbs}>
                 <Head title="Dashboard" />
                 <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-                    <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
-                    <h2 className="text-2xl font-bold">Welcome!</h2>
-                    <p className="text-muted-foreground mt-2 max-w-md">
-                        Your personalized study space is ready. Complete the onboarding to generate your first AI-powered study plan.
-                    </p>
-                    <Link href="/onboarding">
-                        <Button className="mt-6">
-                            Complete Setup
-                        </Button>
-                    </Link>
+                    {onboardingCompleted ? (
+                        <>
+                            <Brain className="w-12 h-12 text-primary mb-4 animate-pulse" />
+                            <h2 className="text-2xl font-bold">Creating Your Study Plan...</h2>
+                            <p className="text-muted-foreground mt-2 max-w-md">
+                                Neuron AI is crafting your personalized study schedule. This usually takes a few moments.
+                            </p>
+                            <div className="mt-6 space-y-2">
+                                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+                                </div>
+                                <p className="text-xs text-muted-foreground">
+                                    {isChecking ? 'Checking for your plan...' : 'Please wait while we generate your plan...'}
+                                </p>
+                                {refreshCount > 5 && (
+                                    <p className="text-xs text-amber-600">Taking longer than expected - AI is working hard!</p>
+                                )}
+                            </div>
+                            <div className="mt-8 space-y-4">
+                                <Link href="/study-planner">
+                                    <Button variant="outline">
+                                        Check Study Planner
+                                    </Button>
+                                </Link>
+                                <div className="text-center space-y-2">
+                                    <button
+                                        onClick={() => router.reload()}
+                                        className="text-sm text-muted-foreground hover:text-primary"
+                                    >
+                                        Refresh manually
+                                    </button>
+                                    <div>
+                                        <Link href="/onboarding" className="text-sm text-muted-foreground hover:text-primary block">
+                                            Need to adjust your onboarding settings?
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+                            <h2 className="text-2xl font-bold">Welcome!</h2>
+                            <p className="text-muted-foreground mt-2 max-w-md">
+                                Your personalized study space is ready. Complete the onboarding to generate your first AI-powered study plan.
+                            </p>
+                            <Link href="/onboarding">
+                                <Button className="mt-6">
+                                    Complete Setup
+                                </Button>
+                            </Link>
+                        </>
+                    )}
                 </div>
             </AppLayout>
         );

@@ -99,6 +99,7 @@ class CleanPlannerAgent extends Agent
         $peak = $data['productivity_peak'] ?? 'morning';
         $hours = $data['daily_study_hours'] ?? 2;
         $styles = json_encode($data['learning_style'] ?? []);
+        $goal = $data['study_goal'] ?? '';
 
         $currentDay = $data['current_day'] ?? date('l');
         $currentDate = $data['current_date'] ?? date('Y-m-d');

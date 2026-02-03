@@ -1,14 +1,14 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { AlertTriangle, Info } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AlertTriangle, Info } from 'lucide-react';
 import OnboardingLayout from '@/layouts/onboarding-layout';
 
 import type { SharedData } from '@/types';
