@@ -5,14 +5,16 @@ namespace App\AI\Neuron;
 class NeuronService
 {
     protected CleanPlannerAgent $planner;
+
     protected AnalyzerAgent $analyzer;
+
     protected CleanOptimizerAgent $optimizer;
 
     public function __construct()
     {
-        $this->planner = new CleanPlannerAgent();
-        $this->analyzer = new AnalyzerAgent();
-        $this->optimizer = new CleanOptimizerAgent();
+        $this->planner = new CleanPlannerAgent;
+        $this->analyzer = new AnalyzerAgent;
+        $this->optimizer = new CleanOptimizerAgent;
     }
 
     /**
@@ -29,7 +31,18 @@ class NeuronService
         };
     }
 
-    public function planner(): CleanPlannerAgent { return $this->planner; }
-    public function analyzer(): AnalyzerAgent { return $this->analyzer; }
-    public function optimizer(): CleanOptimizerAgent { return $this->optimizer; }
+    public function planner(): CleanPlannerAgent
+    {
+        return $this->planner;
+    }
+
+    public function analyzer(): AnalyzerAgent
+    {
+        return $this->analyzer;
+    }
+
+    public function optimizer(): CleanOptimizerAgent
+    {
+        return $this->optimizer;
+    }
 }

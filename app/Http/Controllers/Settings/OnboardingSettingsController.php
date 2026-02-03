@@ -5,8 +5,8 @@ namespace App\Http\Controllers\Settings;
 use App\Http\Controllers\Controller;
 use App\Services\StudyHoursValidator;
 use App\Services\StudyPlanService;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,7 +26,7 @@ class OnboardingSettingsController extends Controller
     {
         // Force fresh user data from database
         $user = $request->user()->fresh();
-        
+
         return Inertia::render('settings/onboarding-settings', [
             'user' => [
                 'id' => $user->id,
@@ -90,11 +90,11 @@ class OnboardingSettingsController extends Controller
         );
 
         // If hours are unrealistic, show error but allow user to proceed (they're updating, not new onboarding)
-        if (!$validation['is_realistic']) {
+        if (! $validation['is_realistic']) {
             // For settings, we'll allow the change but show strong warnings
             $warnings = $validation['warnings'];
             $validated['daily_study_hours'] = $validation['recommended_hours'];
-            
+
             return back()
                 ->with('study_hours_warnings', $warnings)
                 ->with('study_hours_recommendations', $validation['adjustments'])
@@ -106,7 +106,7 @@ class OnboardingSettingsController extends Controller
         // Update user settings
         \Log::info('=== UPDATING USER SETTINGS ===');
         \Log::info('Validated data', $validated);
-        
+
         $user->update([
             'subjects' => $validated['subjects'],
             'exam_dates' => $validated['exam_dates'] ?? [],
@@ -126,11 +126,11 @@ class OnboardingSettingsController extends Controller
         // Regenerate study plan if requested
         if ($validated['regenerate_plan'] ?? false) {
             \Log::info('=== GENERATING NEW STUDY PLAN ===');
-            
+
             try {
                 // Refresh user to get the latest saved data
                 $user->refresh();
-                
+
                 // Use the fresh data from database instead of request data
                 $planData = [
                     'subjects' => $user->subjects,
@@ -142,11 +142,11 @@ class OnboardingSettingsController extends Controller
                     'study_goal' => $user->study_goal,
                     'timezone' => $user->timezone,
                 ];
-                
+
                 \Log::info('Plan data for AI (from fresh user data)', $planData);
-                
+
                 $this->studyPlanService->generatePlanWithData($user, $planData);
-                
+
                 \Log::info('✅ Study plan generated successfully');
 
                 // Verify the study plan was actually created
@@ -156,12 +156,14 @@ class OnboardingSettingsController extends Controller
                 \Log::info('New plan title', ['plan_title' => $newPlan ? $newPlan->title : 'null']);
                 \Log::info('New plan status', ['plan_status' => $newPlan ? $newPlan->status : 'null']);
                 \Log::info('New plan created at', ['created_at' => $newPlan ? $newPlan->created_at : 'null']);
-                
+
                 session()->flash('success', 'Your study preferences have been updated and a new study plan has been generated with your latest preferences!');
+
                 return redirect()->route('onboarding-settings.edit');
             } catch (\Exception $e) {
-                \Log::error('❌ Failed to generate study plan: ' . $e->getMessage());
-                session()->flash('success', 'Your study preferences have been updated! However, we encountered an error generating a new study plan: ' . $e->getMessage());
+                \Log::error('❌ Failed to generate study plan: '.$e->getMessage());
+                session()->flash('success', 'Your study preferences have been updated! However, we encountered an error generating a new study plan: '.$e->getMessage());
+
                 return redirect()->route('onboarding-settings.edit');
             }
         } else {
@@ -169,6 +171,7 @@ class OnboardingSettingsController extends Controller
         }
 
         session()->flash('success', 'Your study preferences have been updated successfully!');
+
         return redirect()->route('onboarding-settings.edit');
     }
 

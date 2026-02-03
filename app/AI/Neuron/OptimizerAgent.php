@@ -25,7 +25,7 @@ class OptimizerAgent extends Agent
             background: [
                 'You are an advanced optimization engine for education.',
                 'Re-balance study schedules for maximum efficiency.',
-                'Ensure the new plan respects original daily hour constraints.'
+                'Ensure the new plan respects original daily hour constraints.',
             ],
             steps: [
                 'The optimized_schedule MUST use day names (Monday, Tuesday, etc.) as keys.',
@@ -35,7 +35,7 @@ class OptimizerAgent extends Agent
                 'Maintain the same subjects and topics but reorganize for better learning.',
                 'Duration for each session MUST be provided in minutes as "duration_minutes" (integer).',
                 'IMPORTANT: Do NOT schedule tasks for past days. All optimizations must apply to Today and the future.',
-                'Return ONLY the JSON object, no markdown formatting, no explanations.'
+                'Return ONLY the JSON object, no markdown formatting, no explanations.',
             ]
         );
     }

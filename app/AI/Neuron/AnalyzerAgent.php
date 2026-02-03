@@ -25,7 +25,7 @@ class AnalyzerAgent extends Agent
             background: [
                 'You are a performance psychologist and academic analyst.',
                 'Identify patterns, weaknesses, and strengths in study behavior.',
-                'Provide clear insights and subject mastery scores.'
+                'Provide clear insights and subject mastery scores.',
             ],
         );
     }

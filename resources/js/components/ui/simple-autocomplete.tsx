@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 interface SimpleAutocompleteProps {
@@ -29,9 +29,7 @@ export function SimpleAutocomplete({
 }: SimpleAutocompleteProps) {
     const [isOpen, setIsOpen] = React.useState(false);
     const [highlightedIndex, setHighlightedIndex] = React.useState(0);
-    const [loading, setLoading] = useState(false);
     const inputRef = React.useRef<HTMLInputElement>(null);
-    const listRef = React.useRef<HTMLUListElement>(null);
 
     // Filter suggestions based on current input
     const filteredSuggestions = useMemo(() => {
@@ -124,12 +122,6 @@ export function SimpleAutocomplete({
                     )}
                 />
 
-                {/* Loading indicator */}
-                {loading && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                        <div className="w-4 h-4 border-2 border-gray-300 border-t-transparent rounded-full animate-spin"></div>
-                    </div>
-                )}
             </div>
 
             {/* Dropdown */}

@@ -1,7 +1,5 @@
-import { Head, Link, useForm, usePage, router } from '@inertiajs/react';
+import { Head, useForm, usePage, router } from '@inertiajs/react';
 import {
-    Settings,
-    Save,
     AlertTriangle,
     BookOpen,
     Clock,
@@ -40,20 +38,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-const learningStyles = [
-    { value: 'visual', label: 'Visual (Diagrams, charts, videos)' },
-    { value: 'auditory', label: 'Auditory (Lectures, discussions)' },
-    { value: 'reading', label: 'Reading (Textbooks, articles)' },
-    { value: 'kinesthetic', label: 'Kinesthetic (Hands-on, practice)' },
-];
-
-const peakTimes = [
-    { value: 'morning', label: 'Morning (6AM - 12PM)' },
-    { value: 'afternoon', label: 'Afternoon (12PM - 5PM)' },
-    { value: 'evening', label: 'Evening (5PM - 9PM)' },
-    { value: 'night', label: 'Night (9PM - 2AM)' },
-];
-
 interface User {
     id: number;
     name: string;
@@ -72,22 +56,44 @@ interface User {
 
 interface Props {
     user: User;
-    activePlan: any;
+    activePlan: unknown;
 }
 
-export default function OnboardingSettings({ user, activePlan }: Props) {
-    const page = usePage<SharedData>();
-    const flash = page.props.flash;
-    const [newSubject, setNewSubject] = useState('');
-    const [showResetConfirm, setShowResetConfirm] = useState(false);
-    const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
+const parseSubjects = (subjects: unknown): string[] => {
+    if (Array.isArray(subjects)) {
+        return subjects as string[];
+    }
 
+    if (typeof subjects === 'string') {
+        try {
+            const parsed = JSON.parse(subjects) as unknown;
+            return Array.isArray(parsed) ? (parsed as string[]) : [];
+        } catch {
+            return [];
+        }
+    }
+
+    return [];
+};
+
+interface OnboardingFlash {
+    success?: string;
+    error?: string;
+    hours_adjusted?: boolean;
+    original_hours?: number;
+    recommended_hours?: number;
+}
+
+export default function OnboardingSettings({ user }: Props) {
+    const page = usePage<SharedData>();
+    const flash = page.props.flash as OnboardingFlash;
+    const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
     // TanStack Query for subjects
-    const { allSubjects, loading, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
+    const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
     const [subjectInputValue, setSubjectInputValue] = useState('');
 
     // Search suggestions hook
-    const { data: searchData, isLoading: searchLoading } = useSearchSuggestions(subjectInputValue);
+    const { data: searchData } = useSearchSuggestions(subjectInputValue);
     const suggestions = searchData?.subjects || [];
 
     useEffect(() => {
@@ -102,7 +108,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
 
     // Initialize form with fresh user data on every render
     const form = useForm({
-        subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
+        subjects: parseSubjects(user.subjects),
         exam_dates: user.exam_dates || {},
         subject_difficulties: user.subject_difficulties || {},
         daily_study_hours: user.daily_study_hours || 2,
@@ -112,21 +118,6 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
         timezone: user.timezone || '',
         regenerate_plan: false,
     });
-
-    // Reset form data when user data changes (after save)
-    useEffect(() => {
-        form.setData({
-            subjects: Array.isArray(user.subjects) ? user.subjects : (typeof user.subjects === 'string' ? JSON.parse(user.subjects || '[]') : []),
-            exam_dates: user.exam_dates || {},
-            subject_difficulties: user.subject_difficulties || {},
-            daily_study_hours: user.daily_study_hours || 2,
-            productivity_peak: user.productivity_peak || 'morning',
-            learning_style: user.learning_style || [],
-            study_goal: user.study_goal || '',
-            timezone: user.timezone || '',
-            regenerate_plan: false,
-        });
-    }, [user]);
 
     const addSubject = async (subjectName: string) => {
         if (!form.data.subjects.includes(subjectName)) {
@@ -146,7 +137,6 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
             form.setData('subject_difficulties', newDifficulties);
 
             setSubjectInputValue('');
-            setNewSubject('');
 
             // Force re-render of subjects list
             setSubjectsKey(prev => prev + 1);
@@ -191,7 +181,7 @@ export default function OnboardingSettings({ user, activePlan }: Props) {
                 // Reset the flag after successful submission
                 form.setData('regenerate_plan', false);
             },
-            onError: (errors: any) => {
+            onError: (errors: Record<string, string>) => {
                 toast.error('Failed to save preferences: ' + Object.values(errors).join(', '));
                 // Reset the flag on error
                 form.setData('regenerate_plan', false);

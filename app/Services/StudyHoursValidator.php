@@ -8,15 +8,20 @@ class StudyHoursValidator
      * Maximum sustainable focus hours by level
      */
     const MAX_HIGH_FOCUS_HOURS = 4;
+
     const MAX_MEDIUM_FOCUS_HOURS = 3;
+
     const MAX_LOW_FOCUS_HOURS = 2;
+
     const MAX_TOTAL_FOCUS_HOURS = 8; // Reduced from 9 to 8 for better sustainability
+
     const RECOMMENDED_MAX_HOURS = 6; // Recommended maximum for most users
-    
+
     /**
      * Recommended daily study limits
      */
     const RECOMMENDED_MIN_HOURS = 1;
+
     const ABSOLUTE_MAX_HOURS = 12;
 
     /**
@@ -35,30 +40,30 @@ class StudyHoursValidator
 
         // Check basic limits
         if ($requestedHours < self::RECOMMENDED_MIN_HOURS) {
-            $result['warnings'][] = "Minimum recommended study time is " . self::RECOMMENDED_MIN_HOURS . " hour(s) per day";
+            $result['warnings'][] = 'Minimum recommended study time is '.self::RECOMMENDED_MIN_HOURS.' hour(s) per day';
             $result['recommended_hours'] = self::RECOMMENDED_MIN_HOURS;
-            $result['adjustments'][] = "Increased from {$requestedHours} to " . self::RECOMMENDED_MIN_HOURS . " hours";
+            $result['adjustments'][] = "Increased from {$requestedHours} to ".self::RECOMMENDED_MIN_HOURS.' hours';
         }
 
         if ($requestedHours > self::ABSOLUTE_MAX_HOURS) {
-            $result['warnings'][] = "Maximum allowed study time is " . self::ABSOLUTE_MAX_HOURS . " hours per day";
+            $result['warnings'][] = 'Maximum allowed study time is '.self::ABSOLUTE_MAX_HOURS.' hours per day';
             $result['recommended_hours'] = self::ABSOLUTE_MAX_HOURS;
-            $result['adjustments'][] = "Reduced from {$requestedHours} to " . self::ABSOLUTE_MAX_HOURS . " hours";
+            $result['adjustments'][] = "Reduced from {$requestedHours} to ".self::ABSOLUTE_MAX_HOURS.' hours';
             $result['is_realistic'] = false;
         }
 
         // Check if hours exceed recommended maximum
         if ($requestedHours > self::RECOMMENDED_MAX_HOURS) {
-            $result['warnings'][] = "Study time exceeds recommended maximum of " . self::RECOMMENDED_MAX_HOURS . " hours. Consider breaking into multiple sessions.";
-            $result['adjustments'][] = "Reduced from {$requestedHours} to " . self::RECOMMENDED_MAX_HOURS . " hours for optimal learning";
+            $result['warnings'][] = 'Study time exceeds recommended maximum of '.self::RECOMMENDED_MAX_HOURS.' hours. Consider breaking into multiple sessions.';
+            $result['adjustments'][] = "Reduced from {$requestedHours} to ".self::RECOMMENDED_MAX_HOURS.' hours for optimal learning';
             $result['recommended_hours'] = self::RECOMMENDED_MAX_HOURS;
             $result['is_realistic'] = false;
         }
 
         // Check focus capacity
         if ($result['recommended_hours'] > self::MAX_TOTAL_FOCUS_HOURS) {
-            $result['warnings'][] = "Requested hours exceed realistic focus capacity. Including mandatory breaks.";
-            $result['adjustments'][] = "Reduced to " . self::MAX_TOTAL_FOCUS_HOURS . " hours with mandatory breaks";
+            $result['warnings'][] = 'Requested hours exceed realistic focus capacity. Including mandatory breaks.';
+            $result['adjustments'][] = 'Reduced to '.self::MAX_TOTAL_FOCUS_HOURS.' hours with mandatory breaks';
             $result['recommended_hours'] = self::MAX_TOTAL_FOCUS_HOURS;
             $result['is_realistic'] = false;
         }
@@ -133,7 +138,7 @@ class StudyHoursValidator
     private static function generateSessions(float $hours, string $focusLevel, string $timing): array
     {
         $sessions = [];
-        
+
         if ($hours <= 0) {
             return $sessions;
         }
@@ -164,25 +169,25 @@ class StudyHoursValidator
                 'morning' => ['Challenging concepts', 'Problem-solving', 'New topics'],
                 'afternoon' => ['Complex exercises', 'Deep work', 'Advanced topics'],
                 'night' => ['Focused study', 'Difficult material', 'Intensive learning'],
-                'flexible' => ['High-focus work', 'Challenging content', 'Deep learning']
+                'flexible' => ['High-focus work', 'Challenging content', 'Deep learning'],
             ],
             'medium' => [
                 'morning' => ['Regular study', 'Practice exercises', 'Review notes'],
                 'afternoon' => ['Standard topics', 'Application exercises', 'Mixed activities'],
                 'night' => ['Moderate study', 'Practice problems', 'Review material'],
-                'flexible' => ['Balanced study', 'Mixed activities', 'Regular learning']
+                'flexible' => ['Balanced study', 'Mixed activities', 'Regular learning'],
             ],
             'low' => [
                 'morning' => ['Light review', 'Easy topics', 'Quick refresh'],
                 'afternoon' => ['Casual study', 'Simple exercises', 'Light reading'],
                 'night' => ['Relaxed review', 'Easy material', 'Wind-down study'],
-                'flexible' => ['Light activities', 'Review sessions', 'Casual learning']
-            ]
+                'flexible' => ['Light activities', 'Review sessions', 'Casual learning'],
+            ],
         ];
 
         $options = $descriptions[$focusLevel][$timing] ?? $descriptions[$focusLevel]['flexible'];
         $index = ($sessionNumber - 1) % count($options);
-        
+
         return $options[$index];
     }
 
@@ -192,33 +197,33 @@ class StudyHoursValidator
     public static function getRecommendations(int $requestedHours, string $peakTime): array
     {
         $validation = self::validateAndAdjust($requestedHours, $peakTime);
-        
+
         $recommendations = [
             'status' => $validation['is_realistic'] ? 'good' : 'warning',
             'message' => '',
             'tips' => [],
         ];
 
-        if (!$validation['is_realistic']) {
-            $recommendations['message'] = "Your requested study time may be too ambitious. Consider our recommendations for better learning outcomes.";
+        if (! $validation['is_realistic']) {
+            $recommendations['message'] = 'Your requested study time may be too ambitious. Consider our recommendations for better learning outcomes.';
         } else {
-            $recommendations['message'] = "Your study schedule looks balanced and achievable!";
+            $recommendations['message'] = 'Your study schedule looks balanced and achievable!';
         }
 
         // Add specific tips based on hours
         if ($requestedHours > 8) {
-            $recommendations['tips'][] = "Consider breaking your study time into morning and evening sessions";
-            $recommendations['tips'][] = "Include 15-minute breaks every 90 minutes";
+            $recommendations['tips'][] = 'Consider breaking your study time into morning and evening sessions';
+            $recommendations['tips'][] = 'Include 15-minute breaks every 90 minutes';
         }
 
         if ($requestedHours > self::MAX_TOTAL_FOCUS_HOURS) {
-            $recommendations['tips'][] = "Schedule regular breaks to maintain focus quality";
-            $recommendations['tips'][] = "Mix high-focus and low-focus activities throughout the day";
+            $recommendations['tips'][] = 'Schedule regular breaks to maintain focus quality';
+            $recommendations['tips'][] = 'Mix high-focus and low-focus activities throughout the day';
         }
 
         if ($peakTime === 'night' && $requestedHours > 6) {
-            $recommendations['tips'][] = "Night studying works best for 4-6 hours maximum";
-            $recommendations['tips'][] = "Save challenging topics for your peak focus time";
+            $recommendations['tips'][] = 'Night studying works best for 4-6 hours maximum';
+            $recommendations['tips'][] = 'Save challenging topics for your peak focus time';
         }
 
         return $recommendations;

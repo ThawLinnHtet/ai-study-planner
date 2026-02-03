@@ -1,5 +1,5 @@
 import { Head, useForm } from '@inertiajs/react';
-import { X, BookOpen, Atom, Calculator, Globe, Briefcase, Palette, Stethoscope, Building, Gavel, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target } from 'lucide-react';
+import { X, BookOpen, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -22,6 +22,8 @@ type OnboardingData = {
     learning_style: string | null;
     study_goal: string | null;
     timezone: string | null;
+    productivity_peak?: string | null;
+    subject_difficulties?: Record<string, number> | null;
 };
 
 type Props = {
@@ -41,20 +43,6 @@ type WizardForm = {
     study_goal: string;
     timezone: string;
     confirm: boolean;
-};
-
-// Icon mapping for subjects
-const iconMap: Record<string, any> = {
-    'calculator': Calculator,
-    'atom': Atom,
-    'stethoscope': Stethoscope,
-    'book-open': BookOpen,
-    'globe': Globe,
-    'briefcase': Briefcase,
-    'palette': Palette,
-    'building': Building,
-    'gavel': Gavel,
-    'brain': Brain,
 };
 
 function ProgressBar({ step, totalSteps }: { step: number; totalSteps: number }) {
@@ -136,11 +124,11 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         subjects: onboarding.subjects ?? [],
         exam_dates: onboarding.exam_dates ?? {},
         daily_study_hours: onboarding.daily_study_hours ?? 2,
-        productivity_peak: (onboarding as any).productivity_peak ?? 'morning',
+        productivity_peak: onboarding.productivity_peak ?? 'morning',
         learning_style: Array.isArray(onboarding.learning_style)
             ? onboarding.learning_style
             : (onboarding.learning_style ? [onboarding.learning_style] : []),
-        subject_difficulties: (onboarding as any).subject_difficulties ?? {},
+        subject_difficulties: onboarding.subject_difficulties ?? {},
         study_goal: onboarding.study_goal ?? '',
         timezone: onboarding.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Rangoon' ? 'Asia/Yangon' : Intl.DateTimeFormat().resolvedOptions().timeZone),
         confirm: false,
@@ -155,13 +143,13 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
     useEffect(() => {
         form.setData('step', step);
-    }, [step]);
+    }, [step, form]);
 
     useEffect(() => {
         if (form.data.timezone === 'Asia/Rangoon') {
             form.setData('timezone', 'Asia/Yangon');
         }
-    }, [form.data.timezone]);
+    }, [form]);
 
     const effectiveExamDates = useMemo(() => {
         const out: Record<string, string | null> = { ...form.data.exam_dates };
@@ -188,15 +176,14 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         }
 
         form.setData('exam_dates', effectiveExamDates);
-    }, [effectiveExamDates]);
+    }, [effectiveExamDates, form]);
 
     // Use the simplified subjects API hook
     const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
 
     // Search suggestions hook
-    const { data: searchData, isLoading: searchLoading } = useSearchSuggestions(subjectInputValue);
+    const { data: searchData } = useSearchSuggestions(subjectInputValue);
     const suggestions = searchData?.subjects || [];
-    const loading = searchLoading;
 
     // Remove the old useEffect since useSearchSuggestions handles searching automatically
 
@@ -219,10 +206,9 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
             // Add to database in background (non-blocking)
             if (isCustomSubject) {
-                addCustomSubject(subjectName)
-                    .catch((error) => {
-                        // Subject is already in UI, so no need to remove it
-                    });
+                addCustomSubject(subjectName).catch(() => {
+                    // Subject is already in UI, so no need to remove it
+                });
             }
         }
     };
@@ -248,20 +234,6 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
     const clearAllSubjects = () => {
         form.setData('subjects', []);
         setSubjectInputValue('');
-    };
-
-    const handleCustomSubject = async () => {
-        const trimmed = subjectInputValue.trim();
-        if (trimmed && !form.data.subjects.includes(trimmed)) {
-            try {
-                await addCustomSubject(trimmed);
-                addSubject(trimmed);
-            } catch (error) {
-                console.error('Failed to add custom subject:', error);
-                // Still add it locally even if API fails
-                addSubject(trimmed);
-            }
-        }
     };
 
     const canGoBack = step > 1;
@@ -387,7 +359,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                     <p className="text-sm text-muted-foreground animate-pulse">{processingMessage}</p>
                                                 </div>
                                                 <div className="flex justify-center gap-1">
-                                                    {[...Array(3)].map((_, i) => (
+                                                    {[0, 1, 2].map((i) => (
                                                         <div key={i} className="size-1.5 rounded-full bg-primary animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
                                                     ))}
                                                 </div>
@@ -536,7 +508,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                     </div>
                                                 </div>
                                                 <InputError
-                                                    message={(form.errors as any).subjects}
+                                                    message={typeof form.errors.subjects === 'string' ? form.errors.subjects : undefined}
                                                 />
 
                                                 <div className="flex items-center justify-between">
@@ -622,8 +594,8 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                                         : "bg-background border-border hover:border-primary/50"
                                                                                 )}
                                                                             >
-                                                                                <div className="flex gap-0.5">
-                                                                                    {[...Array(3)].map((_, i) => (
+                                                                        <div className="flex gap-0.5">
+                                                                                    {[0, 1, 2].map((i) => (
                                                                                         <Star key={i} className={cn(
                                                                                             "size-4",
                                                                                             i < opt.val ? (opt.val === 3 ? "fill-red-500 text-red-500" : opt.val === 2 ? "fill-amber-500 text-amber-500" : "fill-green-500 text-green-500") : "text-muted/20"
@@ -1011,7 +983,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                             Exam dates:
                                                                         </span>{' '}
                                                                         {Object.entries(form.data.exam_dates)
-                                                                            .filter(([_, date]) => date)
+                                                                            .filter((entry) => entry[1])
                                                                             .map(([subject, date]) => `${subject} (${date})`)
                                                                             .join(', ') || '—'}
                                                                     </div>

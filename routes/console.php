@@ -1,12 +1,11 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 
 Artisan::command('neuron:test', function () {
     $this->info('Starting Neuron AI Test...');
 
-    $service = new \App\AI\Neuron\NeuronService();
+    $service = new \App\AI\Neuron\NeuronService;
 
     $dummyData = [
         'subjects' => ['Mathematics', 'Physics'],
@@ -26,6 +25,6 @@ Artisan::command('neuron:test', function () {
         $this->info('Success! Response received:');
         $this->line(json_encode($result, JSON_PRETTY_PRINT));
     } catch (\Exception $e) {
-        $this->error('Test failed: ' . $e->getMessage());
+        $this->error('Test failed: '.$e->getMessage());
     }
 })->purpose('Quickly test the Neuron AI PlannerAgent');

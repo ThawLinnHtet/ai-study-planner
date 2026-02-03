@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\Subject;
+use Illuminate\Database\Seeder;
 
 class SubjectSeeder extends Seeder
 {
@@ -24,7 +24,7 @@ class SubjectSeeder extends Seeder
             'UI/UX Design',
             'Cloud Computing',
             'DevOps',
-            
+
             // Business & Finance
             'Business Administration',
             'Financial Analysis',
@@ -34,26 +34,26 @@ class SubjectSeeder extends Seeder
             'Digital Marketing',
             'Supply Chain Management',
             'Human Resources',
-            
+
             // Healthcare & Medicine
             'Medicine',
             'Nursing',
             'Public Health',
             'Biotechnology',
             'Healthcare Administration',
-            
+
             // Education & Academia
             'Education Leadership',
             'Curriculum Development',
             'Educational Technology',
             'Higher Education',
-            
+
             // Law & Legal Studies
             'Corporate Law',
             'International Law',
             'Legal Studies',
             'Compliance',
-            
+
             // Creative Arts & Design
             'Graphic Design',
             'Fashion Design',
@@ -62,7 +62,7 @@ class SubjectSeeder extends Seeder
             'Film Production',
             'Creative Writing',
             'Journalism',
-            
+
             // Sciences & Research
             'Physics',
             'Chemistry',
@@ -70,31 +70,31 @@ class SubjectSeeder extends Seeder
             'Environmental Science',
             'Mathematics',
             'Statistics',
-            
+
             // Social Sciences
             'Psychology',
             'Sociology',
             'Political Science',
             'Economics',
-            
+
             // Professional Development
             'Leadership Development',
             'Career Development',
             'Public Speaking',
             'Negotiation Skills',
-            
+
             // Advanced Technologies
             'Machine Learning',
             'Blockchain',
             'Robotics',
             'Augmented Reality',
             'Virtual Reality',
-            
+
             // Industry-Specific
             'Hospitality Management',
             'Sports Management',
             'Event Management',
-            'Government Administration'
+            'Government Administration',
         ];
 
         // Clear existing subjects

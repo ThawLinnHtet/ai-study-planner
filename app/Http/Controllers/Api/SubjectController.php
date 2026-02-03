@@ -4,8 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Subject;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SubjectController extends Controller
 {
@@ -16,21 +16,21 @@ class SubjectController extends Controller
     {
         $query = $request->get('q', '');
         $limit = min($request->get('limit', 20), 50);
-        
+
         if (empty($query)) {
             return response()->json(['subjects' => []]);
         }
-        
+
         // Simple text search
         $subjects = Subject::where('name', 'LIKE', "%{$query}%")
             ->orderBy('name')
             ->limit($limit)
             ->pluck('name')
             ->toArray();
-        
+
         return response()->json(['subjects' => $subjects]);
     }
-    
+
     /**
      * Add a new subject (optional - for custom subjects)
      */
@@ -39,19 +39,19 @@ class SubjectController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:subjects,name',
         ]);
-        
+
         $subject = Subject::create([
             'name' => trim($validated['name']),
         ]);
-        
+
         return response()->json([
             'success' => true,
             'subject' => [
                 'name' => $subject->name,
-            ]
+            ],
         ]);
     }
-    
+
     /**
      * Get all subjects (for debugging/admin)
      */
@@ -60,7 +60,7 @@ class SubjectController extends Controller
         $subjects = Subject::orderBy('name')
             ->pluck('name')
             ->toArray();
-            
+
         return response()->json(['subjects' => $subjects]);
     }
 }

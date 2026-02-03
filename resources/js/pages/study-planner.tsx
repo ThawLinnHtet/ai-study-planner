@@ -17,15 +17,13 @@ import {
     ChevronLeft,
     ChevronRight,
     RefreshCw,
-    AlertCircle,
-    Settings,
-    Sliders
+    AlertCircle
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
@@ -155,7 +153,11 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
     }
 
     const currentDayName = format(selectedDate, 'EEEE');
-    const rawSchedule = plan.generated_plan.schedule || (plan.generated_plan as any).optimized_schedule || {};
+    const rawScheduleSource =
+        plan.generated_plan.schedule ??
+        (plan.generated_plan as { optimized_schedule?: Record<string, unknown> }).optimized_schedule ??
+        {};
+    const rawSchedule = rawScheduleSource as Record<string, unknown>;
 
     // Check if the selected date is within the plan's life span (guard against null dates)
     const planStart = plan.starts_on ? startOfDay(parseISO(plan.starts_on)) : startOfDay(selectedDate);
@@ -164,45 +166,98 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
     const isWithinRange = targetDate >= planStart && targetDate <= planEnd;
 
     // 1. Find the day object (handle both numeric indices and direct day names)
-    let dayData: any = isWithinRange ? (rawSchedule[currentDayName] || Object.values(rawSchedule).find((v: any) => v[currentDayName])) : null;
+    const resolveDayData = (schedule: Record<string, unknown>, dayName: string): unknown => {
+        if (dayName in schedule) {
+            return schedule[dayName];
+        }
 
-    // 2. If it was nested like [0] => { "Monday": ... }, unwrap it
-    if (dayData && dayData[currentDayName]) dayData = dayData[currentDayName];
-
-    // 3. Extract sessions and handle raw strings if AI ignored the object structure
-    const rawSessions = dayData?.sessions || (Array.isArray(dayData) ? dayData : []);
-    const todaySessions: Session[] = rawSessions
-        .filter((s: any) => s != null)
-        .map((s: any) => {
-            if (typeof s === 'string') {
-                // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
-                const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
-
-                // Extract subject (text before first paren or dash)
-                const subjectMatch = cleanContent.match(/^([^(\-]+)/);
-                const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
-
-                return {
-                    subject: subject,
-                    topic: cleanContent.trim(),
-                    duration_minutes: 60,
-                    focus_level: 'medium'
-                };
+        for (const value of Object.values(schedule)) {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                const record = value as Record<string, unknown>;
+                if (dayName in record) {
+                    return record[dayName];
+                }
             }
-            return s;
-        });
+        }
 
-    const getSubjectDisplay = (s: Session | any) => {
-        if (!s) return 'Study Session';
-        const v = typeof s.subject === 'string' ? s.subject : s.subject?.subject;
-        const out = v ?? 'Study Session';
-        return out === '[object Object]' || out === 'undefined' ? 'Study Session' : String(out);
+        return null;
     };
-    const getTopicDisplay = (s: Session | any) => {
-        if (!s) return '';
-        const v = typeof s.topic === 'string' ? s.topic : s.topic?.topic;
-        if (v == null) return '';
-        const str = String(v);
+
+    const unwrapDayData = (data: unknown, dayName: string): unknown => {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const record = data as Record<string, unknown>;
+            if (dayName in record) {
+                return record[dayName];
+            }
+        }
+        return data;
+    };
+
+    const normalizeSessions = (data: unknown): Session[] => {
+        const collected: unknown[] = [];
+
+        if (Array.isArray(data)) {
+            collected.push(...data);
+        } else if (data && typeof data === 'object') {
+            const record = data as Record<string, unknown>;
+            if (Array.isArray(record.sessions)) {
+                collected.push(...record.sessions);
+            }
+        }
+
+        return collected
+            .filter((value): value is string | Session => value != null)
+            .map((value) => {
+                if (typeof value === 'string') {
+                    const cleanContent = value.replace(
+                        /^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i,
+                        '',
+                    );
+
+                    const subjectMatch = cleanContent.match(/^([^(-]+)/);
+                    const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
+
+                    return {
+                        subject: subject,
+                        topic: cleanContent.trim(),
+                        duration_minutes: 60,
+                        focus_level: 'medium',
+                    };
+                }
+
+                return value as Session;
+            });
+    };
+
+    const dayDataRaw = isWithinRange ? resolveDayData(rawSchedule, currentDayName) : null;
+    const dayData = unwrapDayData(dayDataRaw, currentDayName);
+    const todaySessions = normalizeSessions(dayData);
+
+    const getSubjectDisplay = (s: unknown) => {
+        if (!s || typeof s !== 'object') return 'Study Session';
+        const record = s as { subject?: unknown };
+        let value = record.subject;
+
+        if (value && typeof value === 'object' && 'subject' in (value as { subject?: unknown })) {
+            value = (value as { subject?: unknown }).subject;
+        }
+
+        if (typeof value !== 'string') return 'Study Session';
+        if (value === '[object Object]' || value === 'undefined') return 'Study Session';
+        return value;
+    };
+
+    const getTopicDisplay = (s: unknown) => {
+        if (!s || typeof s !== 'object') return '';
+        const record = s as { topic?: unknown };
+        let value = record.topic;
+
+        if (value && typeof value === 'object' && 'topic' in (value as { topic?: unknown })) {
+            value = (value as { topic?: unknown }).topic;
+        }
+
+        if (typeof value !== 'string') return '';
+        const str = value;
         return str === '[object Object]' ? '' : str.slice(0, 200);
     };
 

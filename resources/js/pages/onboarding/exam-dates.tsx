@@ -3,7 +3,6 @@ import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import OnboardingLayout from '@/layouts/onboarding-layout';
 
@@ -67,11 +66,7 @@ export default function OnboardingExamDates({
                                             placeholder="Pick an exam date"
                                         />
                                         <InputError
-                                            message={
-                                                form.errors[
-                                                `exam_dates.${subject.name}` as any
-                                                ]
-                                            }
+                                            message={form.errors[`exam_dates.${subject.name}` as keyof typeof form.errors]}
                                         />
                                     </div>
                                 ))}

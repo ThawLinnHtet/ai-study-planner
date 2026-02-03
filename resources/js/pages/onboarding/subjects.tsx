@@ -1,4 +1,5 @@
 import { Head, useForm } from '@inertiajs/react';
+import type { LucideIcon } from 'lucide-react';
 import { X, BookOpen, Atom, Calculator, Globe, Briefcase, Palette, Stethoscope, Building, Gavel, Brain } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import Heading from '@/components/heading';
@@ -17,8 +18,17 @@ type Subject = {
     exam_date: string | null;
 };
 
+type SubjectOption = {
+    id: number;
+    name: string;
+    description?: string;
+    category: string;
+    icon: string;
+    is_custom?: boolean;
+};
+
 // Icon mapping for subjects
-const iconMap: Record<string, any> = {
+const iconMap: Record<string, LucideIcon> = {
     'calculator': Calculator,
     'atom': Atom,
     'stethoscope': Stethoscope,
@@ -43,18 +53,18 @@ export default function OnboardingSubjects({
     const [isOpen, setIsOpen] = useState(false);
 
     // Use the subjects API hook
-    const { subjects, isLoading, searchSubjects, addCustomSubject, trackUsage } = useSubjects();
+    const { subjects, searchSubjects, addCustomSubject, trackUsage } = useSubjects();
 
     // Group subjects by category
     const groupedSubjects = useMemo(() => {
-        const allSubjects = [...subjects.global, ...subjects.custom];
+        const allSubjects = [...subjects.global, ...subjects.custom] as SubjectOption[];
         return allSubjects.reduce((acc, subject) => {
             if (!acc[subject.category]) {
                 acc[subject.category] = [];
             }
             acc[subject.category].push(subject);
             return acc;
-        }, {} as Record<string, any[]>);
+        }, {} as Record<string, SubjectOption[]>);
     }, [subjects]);
 
     // Search subjects when input changes

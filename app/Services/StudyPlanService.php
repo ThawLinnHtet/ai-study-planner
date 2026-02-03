@@ -197,28 +197,28 @@ class StudyPlanService
         $recentSessions = $user->studySessions()
             ->where('started_at', '>=', Carbon::now()->subDays(7))
             ->get();
-        
+
         $recentQuizzes = $user->quizResults()
             ->where('taken_at', '>=', Carbon::now()->subDays(7))
             ->get();
 
         // 1. Analyze performance
         $hasPerformanceData = $recentSessions->isNotEmpty() || $recentQuizzes->isNotEmpty();
-        
-        if (!$hasPerformanceData) {
+
+        if (! $hasPerformanceData) {
             // If no performance data, create a gentle optimization that preserves beginner topics
-            $analysis = (object)[
+            $analysis = (object) [
                 'insights' => [
                     [
                         'detail' => 'No performance data available. Preserving current topic progression.',
-                        'significance' => 'Beginner topics should remain at appropriate difficulty level.'
-                    ]
+                        'significance' => 'Beginner topics should remain at appropriate difficulty level.',
+                    ],
                 ],
                 'subject_mastery' => [],
                 'recommendations' => [
                     'Continue with current topic progression.',
-                    'Re-balance recommended after 1-2 weeks of study data.'
-                ]
+                    'Re-balance recommended after 1-2 weeks of study data.',
+                ],
             ];
         } else {
             $analysis = $this->neuron->analyzer()->analyze([
@@ -231,7 +231,7 @@ class StudyPlanService
         // 2. Optimize plan
         $optimizationData = [
             'current_plan' => $activePlan->generated_plan,
-            'analysis_insights' => (array)$analysis,
+            'analysis_insights' => (array) $analysis,
             'current_day' => Carbon::today()->format('l'),
             'current_date' => Carbon::today()->toDateString(),
             'user_subjects' => $user->subjects,
@@ -242,7 +242,7 @@ class StudyPlanService
             'learning_style' => $user->learning_style,
             'has_performance_data' => $hasPerformanceData,
         ];
-        
+
         $optimization = $this->neuron->optimizer()->optimize($optimizationData);
 
         // 3. Persist new plan (with weeks structure for weekly rollover)
@@ -288,6 +288,7 @@ class StudyPlanService
         }
 
         $max = $dates->max();
+
         return $max->isBefore($startsOn) ? $startsOn->copy()->addWeeks(4) : $max;
     }
 
@@ -332,6 +333,7 @@ class StudyPlanService
 
         $plan['schedule'] = $normalized;
         unset($plan['optimized_schedule']);
+
         return $plan;
     }
 
@@ -364,6 +366,7 @@ class StudyPlanService
                         ? $s['focus_level']
                         : 'medium',
                 ];
+
                 continue;
             }
             if (is_string($s)) {
@@ -380,6 +383,7 @@ class StudyPlanService
                                 ? $decoded['focus_level']
                                 : 'medium',
                         ];
+
                         continue;
                     }
                 }
@@ -389,19 +393,24 @@ class StudyPlanService
                     'duration_minutes' => 60,
                     'focus_level' => 'medium',
                 ];
+
                 continue;
             }
         }
+
         return $out;
     }
 
     protected function parseDuration(mixed $val): int
     {
-        if ($val === null) return 60;
+        if ($val === null) {
+            return 60;
+        }
 
         // If explicitly numeric
         if (is_numeric($val)) {
             $intVal = (int) $val;
+
             // Heuristic: If value is <= 12, assume it's hours and convert to minutes.
             // It is extremely unlikely a study session is 1 to 12 minutes long.
             return $intVal > 0 && $intVal <= 12 ? $intVal * 60 : $intVal;
@@ -415,6 +424,7 @@ class StudyPlanService
             }
             // Fallback: try parsing as int
             $parsed = (int) $cleaned;
+
             return $this->parseDuration($parsed);
         }
 

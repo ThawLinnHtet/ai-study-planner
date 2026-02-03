@@ -1,11 +1,10 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, Info } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,14 +19,21 @@ const peakTimes = [
     { value: 'night', label: 'Night (9PM - 2AM)' },
 ];
 
+type AvailabilityFlash = {
+    validation_failed?: boolean;
+    study_hours_warnings?: string[];
+    study_hours_recommendations?: string[];
+};
+
 export default function OnboardingAvailability() {
     const { auth, flash, errors } = usePage<SharedData>().props;
+    const availabilityFlash = flash as AvailabilityFlash;
 
     const form = useForm({
-        daily_study_hours: (auth.user as any)?.daily_study_hours ?? 2,
-        productivity_peak: (auth.user as any)?.productivity_peak ?? 'morning',
-        learning_style: (auth.user as any)?.learning_style ?? '',
-        timezone: (auth.user as any)?.timezone ?? '',
+        daily_study_hours: Number((auth.user as { daily_study_hours?: number } | undefined)?.daily_study_hours ?? 2),
+        productivity_peak: (auth.user as { productivity_peak?: string } | undefined)?.productivity_peak ?? 'morning',
+        learning_style: (auth.user as { learning_style?: string } | undefined)?.learning_style ?? '',
+        timezone: (auth.user as { timezone?: string } | undefined)?.timezone ?? '',
     });
 
     useEffect(() => {
@@ -38,7 +44,7 @@ export default function OnboardingAvailability() {
         const tz = detectedTz === 'Asia/Rangoon' ? 'Asia/Yangon' : detectedTz;
 
         if (tz) form.setData('timezone', tz);
-    }, [form.data.timezone]);
+    }, [form]);
 
     return (
         <>
@@ -69,9 +75,9 @@ export default function OnboardingAvailability() {
                         )}
 
                         {/* Study Hours Warnings (when validation fails) */}
-                        {(flash as any)?.validation_failed && (flash as any)?.study_hours_warnings && (
+                        {availabilityFlash?.validation_failed && availabilityFlash?.study_hours_warnings && (
                             <div className="mb-6 space-y-3">
-                                {(flash as any).study_hours_warnings.map((warning: string, index: number) => (
+                                {availabilityFlash.study_hours_warnings.map((warning, index) => (
                                     <Alert key={index} className="border-amber-200 bg-amber-50">
                                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                                         <AlertDescription className="text-amber-800">
@@ -80,13 +86,13 @@ export default function OnboardingAvailability() {
                                     </Alert>
                                 ))}
 
-                                {(flash as any)?.study_hours_recommendations && (
+                                {availabilityFlash?.study_hours_recommendations && (
                                     <Alert className="border-blue-200 bg-blue-50">
                                         <Info className="h-4 w-4 text-blue-600" />
                                         <AlertDescription className="text-blue-800">
                                             <div className="font-medium mb-2">💡 Recommendations:</div>
                                             <ul className="list-disc list-inside space-y-1 text-sm">
-                                                {(flash as any).study_hours_recommendations.map((rec: string, index: number) => (
+                                                {availabilityFlash.study_hours_recommendations.map((rec, index) => (
                                                     <li key={index}>{rec}</li>
                                                 ))}
                                             </ul>
@@ -100,9 +106,9 @@ export default function OnboardingAvailability() {
                         )}
 
                         {/* Success message for valid hours */}
-                        {!(flash as any)?.validation_failed && (flash as any)?.study_hours_warnings && (
+                        {!availabilityFlash?.validation_failed && availabilityFlash?.study_hours_warnings && (
                             <div className="mb-6 space-y-3">
-                                {(flash as any).study_hours_warnings.map((warning: string, index: number) => (
+                                {availabilityFlash.study_hours_warnings.map((warning, index) => (
                                     <Alert key={index} className="border-amber-200 bg-amber-50">
                                         <AlertTriangle className="h-4 w-4 text-amber-600" />
                                         <AlertDescription className="text-amber-800">
@@ -111,13 +117,13 @@ export default function OnboardingAvailability() {
                                     </Alert>
                                 ))}
 
-                                {(flash as any)?.study_hours_recommendations && (
+                                {availabilityFlash?.study_hours_recommendations && (
                                     <Alert className="border-green-200 bg-green-50">
                                         <Info className="h-4 w-4 text-green-600" />
                                         <AlertDescription className="text-green-800">
                                             <div className="font-medium mb-2">✅ Your settings have been optimized</div>
                                             <ul className="list-disc list-inside space-y-1 text-sm">
-                                                {(flash as any).study_hours_recommendations.map((rec: string, index: number) => (
+                                                {availabilityFlash.study_hours_recommendations.map((rec, index) => (
                                                     <li key={index}>{rec}</li>
                                                 ))}
                                             </ul>
@@ -141,7 +147,7 @@ export default function OnboardingAvailability() {
                                     onChange={(e) =>
                                         form.setData(
                                             'daily_study_hours',
-                                            e.target.value,
+                                            Number(e.target.value),
                                         )
                                     }
                                 />

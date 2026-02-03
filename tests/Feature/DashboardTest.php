@@ -9,6 +9,11 @@ test('guests are redirected to the login page', function () {
 
 test('authenticated users can visit the dashboard', function () {
     $user = User::factory()->create();
+
+    $user->forceFill([
+        'onboarding_completed' => true,
+    ])->save();
+
     $this->actingAs($user);
 
     $response = $this->get(route('dashboard'));

@@ -13,10 +13,10 @@ return new class extends Migration
     {
         Schema::create('subjects', function (Blueprint $table) {
             $table->id();
-            
+
             $table->string('name'); // Simple text-only subject name
             $table->timestamps();
-            
+
             // Index for faster searches
             $table->index('name');
             $table->unique('name'); // No duplicate subject names

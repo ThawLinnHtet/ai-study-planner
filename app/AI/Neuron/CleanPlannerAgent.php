@@ -26,7 +26,7 @@ class CleanPlannerAgent extends Agent
                 'You are an expert academic planner.',
                 'Your goal is to generate a highly efficient study schedule.',
                 'Prioritize harder subjects during the student\'s peak energy time.',
-                'Ensure all subjects are covered leading up to their respective exam dates.'
+                'Ensure all subjects are covered leading up to their respective exam dates.',
             ],
             steps: [
                 'You MUST return a JSON object with a "schedule" key containing day names as keys',
@@ -35,7 +35,7 @@ class CleanPlannerAgent extends Agent
                 'NEVER use numeric array keys like 0,1,2,3 for days',
                 'Each session MUST be an object with subject, topic, duration_minutes (integer), and focus_level',
                 'Do NOT wrap the schedule in a numeric array',
-                'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All tasks must be for Today or in the future.'
+                'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All tasks must be for Today or in the future.',
             ]
         );
     }
@@ -53,7 +53,7 @@ class CleanPlannerAgent extends Agent
         // Remove ```json and ``` markdown wrappers
         $response = preg_replace('/^```json\s*/', '', $response);
         $response = preg_replace('/```\s*$/', '', $response);
-        
+
         // Trim whitespace
         return trim($response);
     }
@@ -67,24 +67,24 @@ class CleanPlannerAgent extends Agent
         $provider = $this->provider();
         $response = $provider->chat(is_array($messages) ? $messages : [$messages]);
         $content = $this->cleanResponse($response->getContent());
-        
+
         // Parse the cleaned JSON
         $data = json_decode($content, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception('Failed to parse AI response: ' . json_last_error_msg() . '. Content: ' . $content);
+            throw new \Exception('Failed to parse AI response: '.json_last_error_msg().'. Content: '.$content);
         }
-        
+
         // Map to the output class
         $outputClass = $class ?: $this->getOutputClass();
-        $output = new $outputClass();
-        
+        $output = new $outputClass;
+
         // Fill the output object
         foreach ($data as $key => $value) {
             if (property_exists($output, $key)) {
                 $output->$key = $value;
             }
         }
-        
+
         return $output;
     }
 

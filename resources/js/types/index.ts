@@ -12,7 +12,7 @@ export type SharedData = {
         success?: string;
         error?: string;
         info?: string;
-        [key: string]: any;
+        [key: string]: unknown;
     };
     [key: string]: unknown;
 };

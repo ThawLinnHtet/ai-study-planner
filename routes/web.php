@@ -1,7 +1,7 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
 use App\Http\Middleware\EnsureOnboarded;
+use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
@@ -24,8 +24,6 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
 
     Route::post('study-plan/toggle-session', [\App\Http\Controllers\StudyPlanController::class, 'toggleSession'])
         ->name('study-plan.toggle-session');
-
-
 
     Route::get('ai-tutor', function () {
         return Inertia::render('ai-tutor');

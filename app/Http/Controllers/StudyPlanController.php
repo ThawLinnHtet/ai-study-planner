@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\StudyPlan;
+use App\Models\User;
 use App\Services\StudyPlanService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Http\RedirectResponse;
 
 class StudyPlanController extends Controller
 {
@@ -38,11 +38,11 @@ class StudyPlanController extends Controller
             : null;
 
         // If no plan exists but user completed onboarding, create a fallback plan
-        if (!$plan && $user->onboarding_completed) {
+        if (! $plan && $user->onboarding_completed) {
             try {
                 // Try to create a fallback plan if none exists
                 $this->createFallbackPlanIfNeeded($user);
-                
+
                 // Try to get the plan again
                 $activePlan = $user->studyPlans()
                     ->where('status', 'active')
@@ -51,7 +51,7 @@ class StudyPlanController extends Controller
                     ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
                     : null;
             } catch (\Exception $e) {
-                logger()->error('Failed to create fallback plan for dashboard: ' . $e->getMessage());
+                logger()->error('Failed to create fallback plan for dashboard: '.$e->getMessage());
             }
         }
 
@@ -80,35 +80,35 @@ class StudyPlanController extends Controller
         }
         $dailyHours = $user->daily_study_hours ?? 2;
         $peakTime = $user->productivity_peak ?? 'morning';
-        
-        if (empty($subjects) || !is_array($subjects)) {
+
+        if (empty($subjects) || ! is_array($subjects)) {
             return; // No subjects to create plan for
         }
 
         // Create a simple schedule
         $schedule = [];
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        
+
         foreach ($days as $day) {
             $daySessions = [];
             $subjectIndex = 0;
             $remainingMinutes = $dailyHours * 60;
-            
+
             while ($remainingMinutes > 30 && $subjectIndex < count($subjects)) {
                 $sessionMinutes = min(90, $remainingMinutes);
                 $subject = $subjects[$subjectIndex];
-                
+
                 $daySessions[] = [
                     'subject' => $subject,
                     'topic' => 'Study Session',
                     'duration_minutes' => $sessionMinutes,
-                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium'
+                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium',
                 ];
-                
+
                 $remainingMinutes -= $sessionMinutes;
                 $subjectIndex = ($subjectIndex + 1) % count($subjects);
             }
-            
+
             $schedule[$day] = ['sessions' => $daySessions];
         }
 
@@ -132,9 +132,9 @@ class StudyPlanController extends Controller
                     [
                         'week_start' => now()->startOfDay()->toDateString(),
                         'schedule' => $schedule,
-                    ]
-                ]
-            ]
+                    ],
+                ],
+            ],
         ]);
     }
 
@@ -169,9 +169,10 @@ class StudyPlanController extends Controller
     {
         try {
             $this->studyPlanService->rebalancePlan($request->user());
+
             return back()->with('success', 'Your study plan has been optimized based on your recent progress!');
         } catch (\Exception $e) {
-            return back()->with('error', 'We encountered an error while optimizing your plan: ' . $e->getMessage());
+            return back()->with('error', 'We encountered an error while optimizing your plan: '.$e->getMessage());
         }
     }
 
@@ -208,6 +209,4 @@ class StudyPlanController extends Controller
 
         return back();
     }
-
-
 }

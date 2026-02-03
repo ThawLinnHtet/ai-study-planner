@@ -83,7 +83,7 @@ class OnboardingController extends Controller
                 // Filter out subjects that are only numbers or special characters
                 ->filter(fn (string $s) => preg_match('/[a-zA-Z]/', $s))
                 // Normalize to Title Case for Neuron AI
-                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, "UTF-8"))
+                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, 'UTF-8'))
                 // Remove duplicates (case-insensitive)
                 ->unique(fn (string $s) => mb_strtolower($s, 'UTF-8'))
                 ->values()
@@ -120,7 +120,7 @@ class OnboardingController extends Controller
                     'nullable',
                     'date',
                     'after_or_equal:today',
-                    'before:' . now()->addYears(5)->format('Y-m-d'),
+                    'before:'.now()->addYears(5)->format('Y-m-d'),
                 ],
                 'subject_difficulties' => ['nullable', 'array'],
                 'subject_difficulties.*' => ['nullable', 'integer', 'min:1', 'max:3'],
@@ -134,7 +134,7 @@ class OnboardingController extends Controller
                 ->map(fn (string $s) => trim($s))
                 ->filter(fn (string $s) => $s !== '')
                 ->filter(fn (string $s) => preg_match('/[a-zA-Z]/', $s))
-                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, "UTF-8"))
+                ->map(fn (string $s) => mb_convert_case($s, MB_CASE_TITLE, 'UTF-8'))
                 ->unique(fn (string $s) => mb_strtolower($s, 'UTF-8'))
                 ->values()
                 ->all();
@@ -146,6 +146,7 @@ class OnboardingController extends Controller
                     $normalizedSubject = strtolower($subject);
                     $normalizedSubjects = array_map('strtolower', $subjects);
                     $inSubjects = in_array($normalizedSubject, $normalizedSubjects);
+
                     return $inSubjects && $date !== null && $date !== '';
                 })
                 ->all();
@@ -156,6 +157,7 @@ class OnboardingController extends Controller
                     $normalizedSubject = strtolower($subject);
                     $normalizedSubjects = array_map('strtolower', $subjects);
                     $inSubjects = in_array($normalizedSubject, $normalizedSubjects);
+
                     return $inSubjects;
                 })
                 ->map(fn ($d) => is_numeric($d) ? (int) max(1, min(3, (int) $d)) : null)
@@ -195,12 +197,12 @@ class OnboardingController extends Controller
 
             // Validate study hours against focus capacity
             $validation = StudyHoursValidator::validateAndAdjust($dailyHours, $peakTime);
-            
+
             // If the requested hours are unrealistic, block progression and show errors
-            if (!$validation['is_realistic']) {
+            if (! $validation['is_realistic']) {
                 return back()
                     ->withErrors([
-                        'daily_study_hours' => 'Study time of ' . $dailyHours . ' hours exceeds recommended limits. For optimal learning, please choose 1-6 hours per day.'
+                        'daily_study_hours' => 'Study time of '.$dailyHours.' hours exceeds recommended limits. For optimal learning, please choose 1-6 hours per day.',
                     ])
                     ->withInput()
                     ->with('study_hours_warnings', $validation['warnings'])
@@ -265,13 +267,13 @@ class OnboardingController extends Controller
             $this->studyPlanService->generateInitialPlan($user);
         } catch (\Exception $e) {
             // Log the error but don't break onboarding completion
-            logger()->error('Failed to generate initial study plan: ' . $e->getMessage());
-            
+            logger()->error('Failed to generate initial study plan: '.$e->getMessage());
+
             // Create a basic fallback plan if AI fails
             try {
                 $this->createFallbackPlan($user);
             } catch (\Exception $fallbackError) {
-                logger()->error('Failed to create fallback plan: ' . $fallbackError->getMessage());
+                logger()->error('Failed to create fallback plan: '.$fallbackError->getMessage());
                 // Even if plan creation fails completely, continue with onboarding completion
             }
         }
@@ -291,35 +293,35 @@ class OnboardingController extends Controller
         }
         $dailyHours = $user->daily_study_hours ?? 2;
         $peakTime = $user->productivity_peak ?? 'morning';
-        
-        if (empty($subjects) || !is_array($subjects)) {
+
+        if (empty($subjects) || ! is_array($subjects)) {
             return; // No subjects to create plan for
         }
 
         // Create a simple schedule
         $schedule = [];
         $days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-        
+
         foreach ($days as $day) {
             $daySessions = [];
             $subjectIndex = 0;
             $remainingMinutes = $dailyHours * 60;
-            
+
             while ($remainingMinutes > 30 && $subjectIndex < count($subjects)) {
                 $sessionMinutes = min(90, $remainingMinutes);
                 $subject = $subjects[$subjectIndex];
-                
+
                 $daySessions[] = [
                     'subject' => $subject,
                     'topic' => 'Study Session',
                     'duration_minutes' => $sessionMinutes,
-                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium'
+                    'focus_level' => $peakTime === 'morning' && $day === 'Monday' ? 'high' : 'medium',
                 ];
-                
+
                 $remainingMinutes -= $sessionMinutes;
                 $subjectIndex = ($subjectIndex + 1) % count($subjects);
             }
-            
+
             $schedule[$day] = ['sessions' => $daySessions];
         }
 
@@ -343,27 +345,27 @@ class OnboardingController extends Controller
                     [
                         'week_start' => now()->startOfDay()->toDateString(),
                         'schedule' => $schedule,
-                    ]
-                ]
-            ]
+                    ],
+                ],
+            ],
         ]);
     }
 
     public function storeSubjects(Request $request): RedirectResponse
-{
-    $validated = $request->validate([
-        'subjects' => ['required', 'array', 'min:1'],
-        'subjects.*' => ['required', 'string', 'max:255'],
-    ]);
+    {
+        $validated = $request->validate([
+            'subjects' => ['required', 'array', 'min:1'],
+            'subjects.*' => ['required', 'string', 'max:255'],
+        ]);
 
-    $user = $request->user();
-    
-    // Store subjects in user's onboarding data
-    $user->update([
-        'subjects' => $validated['subjects'],
-        'onboarding_step' => 2, // Move to step 2 (exam dates)
-    ]);
+        $user = $request->user();
 
-    return back()->with('success', 'Subjects saved successfully!');
-}
+        // Store subjects in user's onboarding data
+        $user->update([
+            'subjects' => $validated['subjects'],
+            'onboarding_step' => 2, // Move to step 2 (exam dates)
+        ]);
+
+        return back()->with('success', 'Subjects saved successfully!');
+    }
 }

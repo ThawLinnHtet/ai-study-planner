@@ -140,22 +140,39 @@ export default function Dashboard({ plan, completedToday, onboardingCompleted }:
         );
     }
 
-    const getSubjectDisplay = (s: { subject?: string; topic?: string } | any) => {
-        if (!s) return 'Study Session';
-        const v = typeof s.subject === 'string' ? s.subject : s.subject?.subject;
-        const out = v ?? 'Study Session';
-        return out === '[object Object]' || out === 'undefined' ? 'Study Session' : out;
+    const getSubjectDisplay = (s: unknown) => {
+        if (!s || typeof s !== 'object') return 'Study Session';
+        const record = s as { subject?: unknown };
+        let value = record.subject;
+
+        if (value && typeof value === 'object' && 'subject' in (value as { subject?: unknown })) {
+            value = (value as { subject?: unknown }).subject;
+        }
+
+        if (typeof value !== 'string') return 'Study Session';
+        if (value === '[object Object]' || value === 'undefined') return 'Study Session';
+        return value;
     };
-    const getTopicDisplay = (s: { topic?: string } | any) => {
-        if (!s) return '';
-        const v = typeof s.topic === 'string' ? s.topic : s.topic?.topic;
-        if (v == null) return '';
-        const str = String(v);
+    const getTopicDisplay = (s: unknown) => {
+        if (!s || typeof s !== 'object') return '';
+        const record = s as { topic?: unknown };
+        let value = record.topic;
+
+        if (value && typeof value === 'object' && 'topic' in (value as { topic?: unknown })) {
+            value = (value as { topic?: unknown }).topic;
+        }
+
+        if (typeof value !== 'string') return '';
+        const str = value;
         return str === '[object Object]' ? '' : str.slice(0, 120);
     };
 
     const todayName = format(new Date(), 'EEEE');
-    const rawSchedule = plan?.generated_plan?.schedule || (plan?.generated_plan as any)?.optimized_schedule || {};
+    const rawScheduleSource =
+        plan?.generated_plan?.schedule ??
+        (plan?.generated_plan as { optimized_schedule?: Record<string, unknown> })?.optimized_schedule ??
+        {};
+    const rawSchedule = rawScheduleSource as Record<string, unknown>;
 
     // Check if today is within plan range (guard against null dates)
     const planStart = plan.starts_on ? startOfDay(parseISO(plan.starts_on)) : startOfDay(new Date());
@@ -163,32 +180,74 @@ export default function Dashboard({ plan, completedToday, onboardingCompleted }:
     const today = startOfDay(new Date());
     const isWithinRange = today >= planStart && today <= planEnd;
 
-    // 1. Find today's data (handle numeric indices, direct keys, or nested day objects)
-    let dayData: any = isWithinRange ? (rawSchedule[todayName] || Object.values(rawSchedule).find((v: any) => v[todayName])) : null;
-    if (dayData && dayData[todayName]) dayData = dayData[todayName];
+    const resolveDayData = (schedule: Record<string, unknown>, dayName: string): unknown => {
+        if (dayName in schedule) {
+            return schedule[dayName];
+        }
 
-    // 2. Extract and sanitize sessions
-    const rawSessions = dayData?.sessions || (Array.isArray(dayData) ? dayData : []);
-    const todaySessions: Session[] = rawSessions
-        .filter((s: any) => s != null)
-        .map((s: any) => {
-            if (typeof s === 'string') {
-                // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
-                const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
-
-                // Extract subject (text before first paren or dash)
-                const subjectMatch = cleanContent.match(/^([^(\-]+)/);
-                const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
-
-                return {
-                    subject: subject,
-                    topic: cleanContent.trim(),
-                    duration_minutes: 60,
-                    focus_level: 'medium'
-                };
+        for (const value of Object.values(schedule)) {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                const record = value as Record<string, unknown>;
+                if (dayName in record) {
+                    return record[dayName];
+                }
             }
-            return s;
-        });
+        }
+
+        return null;
+    };
+
+    const unwrapDayData = (data: unknown, dayName: string): unknown => {
+        if (data && typeof data === 'object' && !Array.isArray(data)) {
+            const record = data as Record<string, unknown>;
+            if (dayName in record) {
+                return record[dayName];
+            }
+        }
+        return data;
+    };
+
+    const normalizeSessions = (data: unknown): Session[] => {
+        const collected: unknown[] = [];
+
+        if (Array.isArray(data)) {
+            collected.push(...data);
+        } else if (data && typeof data === 'object') {
+            const record = data as Record<string, unknown>;
+            if (Array.isArray(record.sessions)) {
+                collected.push(...record.sessions);
+            }
+        }
+
+        return collected
+            .filter((value): value is string | Session => value != null)
+            .map((value) => {
+                if (typeof value === 'string') {
+                    const cleanContent = value.replace(
+                        /^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i,
+                        '',
+                    );
+
+                    const subjectMatch = cleanContent.match(/^([^(-]+)/);
+                    const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
+
+                    return {
+                        subject: subject,
+                        topic: cleanContent.trim(),
+                        duration_minutes: 60,
+                        focus_level: 'medium',
+                    };
+                }
+
+                return value as Session;
+            });
+    };
+
+    const dayDataRaw = isWithinRange ? resolveDayData(rawSchedule, todayName) : null;
+    const dayData = unwrapDayData(dayDataRaw, todayName);
+
+    const rawSessionsToday = normalizeSessions(dayData);
+    const todaySessions: Session[] = rawSessionsToday;
     const totalMinutes = todaySessions.reduce((acc, s) => acc + s.duration_minutes, 0);
     const completedCount = completedToday.length;
     const progressPercent = todaySessions.length > 0
@@ -201,14 +260,12 @@ export default function Dashboard({ plan, completedToday, onboardingCompleted }:
         const dayName = format(date, 'EEEE');
         const isInRange = date >= planStart && date <= planEnd;
 
-        let dayData: any = isInRange ? (rawSchedule[dayName] || Object.values(rawSchedule).find((v: any) => v[dayName])) : null;
-        if (dayData && dayData[dayName]) dayData = dayData[dayName];
+        const dayDataRawInner = isInRange ? resolveDayData(rawSchedule, dayName) : null;
+        const dayDataInner = unwrapDayData(dayDataRawInner, dayName);
 
-        const sessions = (dayData?.sessions || (Array.isArray(dayData) ? dayData : [])).map((s: any) => {
-            if (s == null) return { subject: 'Study Session' };
-            if (typeof s === 'string') return { subject: s.split(':')[0].trim() };
-            return s;
-        });
+        const sessions = normalizeSessions(dayDataInner).map((s) => ({
+            subject: getSubjectDisplay(s),
+        }));
 
         return {
             date,

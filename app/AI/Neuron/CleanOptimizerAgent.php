@@ -25,7 +25,7 @@ class CleanOptimizerAgent extends Agent
             background: [
                 'You are an advanced optimization engine for education.',
                 'Re-balance study schedules for maximum efficiency.',
-                'Ensure the new plan respects original daily hour constraints.'
+                'Ensure the new plan respects original daily hour constraints.',
             ],
             steps: [
                 'The optimized_schedule MUST use day names (Monday, Tuesday, etc.) as keys.',
@@ -35,7 +35,7 @@ class CleanOptimizerAgent extends Agent
                 'Maintain the same subjects and topics but reorganize for better learning.',
                 'Duration for each session MUST be provided in minutes as "duration_minutes" (integer).',
                 'IMPORTANT: Do NOT schedule tasks for past days. All optimizations must apply to Today and the future.',
-                'Return ONLY the JSON object, no markdown formatting, no explanations.'
+                'Return ONLY the JSON object, no markdown formatting, no explanations.',
             ]
         );
     }
@@ -53,7 +53,7 @@ class CleanOptimizerAgent extends Agent
         // Remove ```json and ``` markdown wrappers
         $response = preg_replace('/^```json\s*/', '', $response);
         $response = preg_replace('/```\s*$/', '', $response);
-        
+
         // Trim whitespace
         return trim($response);
     }
@@ -67,24 +67,24 @@ class CleanOptimizerAgent extends Agent
         $provider = $this->provider();
         $response = $provider->chat(is_array($messages) ? $messages : [$messages]);
         $content = $this->cleanResponse($response->getContent());
-        
+
         // Parse the cleaned JSON
         $data = json_decode($content, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception('Failed to parse AI response: ' . json_last_error_msg() . '. Content: ' . $content);
+            throw new \Exception('Failed to parse AI response: '.json_last_error_msg().'. Content: '.$content);
         }
-        
+
         // Map to the output class
         $outputClass = $class ?: $this->getOutputClass();
-        $output = new $outputClass();
-        
+        $output = new $outputClass;
+
         // Fill the output object
         foreach ($data as $key => $value) {
             if (property_exists($output, $key)) {
                 $output->$key = $value;
             }
         }
-        
+
         return $output;
     }
 
@@ -97,7 +97,7 @@ class CleanOptimizerAgent extends Agent
         $analysis = json_encode($data['analysis_insights'] ?? []);
         $currentDay = $data['current_day'] ?? date('l');
         $currentDate = $data['current_date'] ?? date('Y-m-d');
-        
+
         // User onboarding data to preserve
         $subjects = json_encode($data['user_subjects'] ?? []);
         $examDates = json_encode($data['user_exam_dates'] ?? []);

@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useState, useEffect, useCallback } from 'react';
 
 // API functions
 const fetchSubjects = async () => {
@@ -72,15 +71,18 @@ export function useSimpleSubjects() {
             const previousSubjects = queryClient.getQueryData(['subjects']);
 
             // Optimistically update to the new value
-            queryClient.setQueryData(['subjects'], (old: any) => {
-                if (old?.subjects) {
-                    return {
-                        ...old,
-                        subjects: [...old.subjects, newSubject.trim()]
-                    };
-                }
-                return old;
-            });
+            queryClient.setQueryData(
+                ['subjects'],
+                (old: { subjects?: string[] } | undefined) => {
+                    if (old?.subjects) {
+                        return {
+                            ...old,
+                            subjects: [...old.subjects, newSubject.trim()],
+                        };
+                    }
+                    return old;
+                },
+            );
 
             return { previousSubjects };
         },
@@ -101,12 +103,15 @@ export function useSimpleSubjects() {
     // Legacy compatibility functions
     const searchSubjects = async (query: string) => {
         // This is handled by the useSearchSuggestions hook now
-        console.log('searchSubjects is deprecated, use useSearchSuggestions hook instead');
+        console.log(
+            'searchSubjects is deprecated, use useSearchSuggestions hook instead',
+            query,
+        );
     };
 
     const addCustomSubject = async (name: string) => {
         try {
-            const result = await addSubjectMutation.mutateAsync(name);
+            await addSubjectMutation.mutateAsync(name);
             return { name, isCustom: true, addedToDb: true };
         } catch (err) {
             console.log('Failed to add custom subject:', err);

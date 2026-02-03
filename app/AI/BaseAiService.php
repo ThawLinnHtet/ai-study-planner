@@ -2,12 +2,13 @@
 
 namespace App\AI;
 
-use Illuminate\Support\Facades\Http;
 use Exception;
+use Illuminate\Support\Facades\Http;
 
 abstract class BaseAiService
 {
     protected string $apiKey;
+
     protected string $baseUrl;
 
     /**
@@ -22,8 +23,6 @@ abstract class BaseAiService
     /**
      * Send a request to the AI provider.
      *
-     * @param array $payload
-     * @return array
      * @throws Exception
      */
     protected function sendRequest(array $payload): array
@@ -33,14 +32,14 @@ abstract class BaseAiService
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->apiKey,
+            'Authorization' => 'Bearer '.$this->apiKey,
             'Content-Type' => 'application/json',
             'HTTP-Referer' => config('app.url'),
             'X-Title' => config('app.name'),
-        ])->post($this->baseUrl . '/chat/completions', $payload);
+        ])->post($this->baseUrl.'/chat/completions', $payload);
 
         if ($response->failed()) {
-            throw new Exception('AI Request failed: ' . $response->body());
+            throw new Exception('AI Request failed: '.$response->body());
         }
 
         return $response->json();
