@@ -336,7 +336,7 @@ export default function OnboardingSettings({ user }: Props) {
                                                     <p className="text-xs text-muted-foreground">When is your exam?</p>
                                                 </div>
                                             </div>
-                                            <div className="w-[200px]">
+                                            <div className="w-55">
                                                 <DatePicker
                                                     id={`exam-date-${subject}`}
                                                     value={form.data.exam_dates?.[subject] || null}

@@ -1,12 +1,20 @@
-import type { SVGAttributes } from 'react';
+import type { SVGProps } from 'react';
 
-export default function AppLogoIcon(props: SVGAttributes<SVGElement>) {
+export default function AppLogoIcon(props: SVGProps<SVGSVGElement>) {
     return (
-        <svg {...props} viewBox="0 0 40 42" xmlns="http://www.w3.org/2000/svg">
+        <svg
+            viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"
+            aria-hidden="true"
+            {...props}
+        >
             <path
-                fillRule="evenodd"
-                clipRule="evenodd"
-                d="M17.2 5.63325L8.6 0.855469L0 5.63325V32.1434L16.2 41.1434L32.4 32.1434V23.699L40 19.4767V9.85547L31.4 5.07769L22.8 9.85547V18.2999L17.2 21.411V5.63325ZM38 18.2999L32.4 21.411V15.2545L38 12.1434V18.2999ZM36.9409 10.4439L31.4 13.5221L25.8591 10.4439L31.4 7.36561L36.9409 10.4439ZM24.8 18.2999V12.1434L30.4 15.2545V21.411L24.8 18.2999ZM23.8 20.0323L29.3409 23.1105L16.2 30.411L10.6591 27.3328L23.8 20.0323ZM7.6 27.9212L15.2 32.1434V38.2999L2 30.9666V7.92116L7.6 11.0323V27.9212ZM8.6 9.29991L3.05913 6.22165L8.6 3.14339L14.1409 6.22165L8.6 9.29991ZM30.4 24.8101L17.2 32.1434V38.2999L30.4 30.9666V24.8101ZM9.6 11.0323L15.2 7.92117V22.5221L9.6 25.6333V11.0323Z"
+                fill="currentColor"
+                d="M6 4.75A2.75 2.75 0 0 1 8.75 2h10.5A1.75 1.75 0 0 1 21 3.75v14.5A1.75 1.75 0 0 1 19.25 20H8.75A2.75 2.75 0 0 1 6 17.25V4.75Zm2.75-.75A.75.75 0 0 0 8 4.75v12.5c0 .414.336.75.75.75h10.5a.25.25 0 0 0 .25-.25V3.75a.25.25 0 0 0-.25-.25H8.75Z"
+            />
+            <path
+                fill="currentColor"
+                d="M3 6.5A2.5 2.5 0 0 1 5.5 4H8v2H5.5a.5.5 0 0 0-.5.5v12a.5.5 0 0 0 .5.5H8v2H5.5A2.5 2.5 0 0 1 3 18.5v-12Z"
             />
         </svg>
     );

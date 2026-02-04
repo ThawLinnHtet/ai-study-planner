@@ -26,7 +26,7 @@ class CleanPlannerAgent extends Agent
                 'You are an expert academic planner.',
                 'Your goal is to generate a highly efficient study schedule.',
                 'Prioritize harder subjects during the student\'s peak energy time.',
-                'Ensure all subjects are covered leading up to their respective exam dates.',
+                'Ensure all subjects are covered leading up to their respective exam dates.'
             ],
             steps: [
                 'You MUST return a JSON object with a "schedule" key containing day names as keys',
@@ -35,7 +35,7 @@ class CleanPlannerAgent extends Agent
                 'NEVER use numeric array keys like 0,1,2,3 for days',
                 'Each session MUST be an object with subject, topic, duration_minutes (integer), and focus_level',
                 'Do NOT wrap the schedule in a numeric array',
-                'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All tasks must be for Today or in the future.',
+                'IMPORTANT: Do NOT schedule tasks for past days based on the provided Current Date. All tasks must be for Today or in the future.'
             ]
         );
     }
@@ -53,7 +53,7 @@ class CleanPlannerAgent extends Agent
         // Remove ```json and ``` markdown wrappers
         $response = preg_replace('/^```json\s*/', '', $response);
         $response = preg_replace('/```\s*$/', '', $response);
-
+        
         // Trim whitespace
         return trim($response);
     }
@@ -67,24 +67,24 @@ class CleanPlannerAgent extends Agent
         $provider = $this->provider();
         $response = $provider->chat(is_array($messages) ? $messages : [$messages]);
         $content = $this->cleanResponse($response->getContent());
-
+        
         // Parse the cleaned JSON
         $data = json_decode($content, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new \Exception('Failed to parse AI response: '.json_last_error_msg().'. Content: '.$content);
+            throw new \Exception('Failed to parse AI response: ' . json_last_error_msg() . '. Content: ' . $content);
         }
-
+        
         // Map to the output class
         $outputClass = $class ?: $this->getOutputClass();
-        $output = new $outputClass;
-
+        $output = new $outputClass();
+        
         // Fill the output object
         foreach ($data as $key => $value) {
             if (property_exists($output, $key)) {
                 $output->$key = $value;
             }
         }
-
+        
         return $output;
     }
 
@@ -99,7 +99,6 @@ class CleanPlannerAgent extends Agent
         $peak = $data['productivity_peak'] ?? 'morning';
         $hours = $data['daily_study_hours'] ?? 2;
         $styles = json_encode($data['learning_style'] ?? []);
-        $goal = $data['study_goal'] ?? '';
 
         $currentDay = $data['current_day'] ?? date('l');
         $currentDate = $data['current_date'] ?? date('Y-m-d');
@@ -141,9 +140,8 @@ ENHANCED UX & QUALITY REQUIREMENTS:
 15. TOPIC PROGRESSION: Topics should build logically from basic to advanced
 16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
 17. LEARNING STYLE: Match topics to learning style ({$styles}) - visual learners get diagrams/concepts, reading gets text-heavy topics
-18. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
-19. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
-20. BREAKS: Build in natural break points between different subjects and focus levels
+18. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
+19. BREAKS: Build in natural break points between different subjects and focus levels
 
 FOCAPACITY-AWARE SCHEDULING STRATEGY:
 - If {$hours} ≤ 4: Use high-focus sessions during peak time only
