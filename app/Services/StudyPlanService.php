@@ -129,9 +129,17 @@ class StudyPlanService
 
         $schedule = $currentWeek['schedule'] ?? [];
         $normalized = $this->normalizeGeneratedPlan(['schedule' => $schedule, 'strategy_summary' => $gp['strategy_summary'] ?? '']);
+        $normalizedSchedule = $normalized['schedule'] ?? [];
+
+        $shouldPersist = (empty($gp['weeks']) && ! empty($weeks)) || ($currentWeek['schedule'] ?? null) !== $normalizedSchedule;
+        if ($shouldPersist) {
+            $weeks[$weekIndex] = array_merge($currentWeek, ['schedule' => $normalizedSchedule]);
+            $gp['weeks'] = $weeks;
+            $plan->update(['generated_plan' => $gp]);
+        }
 
         $planArray = $plan->toArray();
-        $planArray['generated_plan'] = array_merge($gp, ['schedule' => $normalized['schedule']]);
+        $planArray['generated_plan'] = array_merge($gp, ['schedule' => $normalizedSchedule]);
 
         return $planArray;
     }
@@ -247,7 +255,7 @@ class StudyPlanService
 
         // 3. Persist new plan (with weeks structure for weekly rollover)
         return DB::transaction(function () use ($user, $activePlan, $optimization) {
-            $activePlan->update(['status' => 'archived']);
+            StudyPlan::query()->whereKey($activePlan->id)->update(['status' => 'archived']);
 
             $startsOn = Carbon::today();
             $normalized = $this->normalizeGeneratedPlan([
@@ -346,9 +354,7 @@ class StudyPlanService
         if (is_array($dayData)) {
             $raw = $dayData['sessions'] ?? $dayData;
         }
-        if (is_array($raw)) {
-            $raw = $raw;
-        } else {
+        if (! is_array($raw)) {
             $raw = [];
         }
 
@@ -358,13 +364,64 @@ class StudyPlanService
                 continue;
             }
             if (is_array($s) && isset($s['subject'])) {
+                $keyTopics = $s['key_topics'] ?? $s['keyTopics'] ?? $s['topics'] ?? $s['key_points'] ?? [];
+                if (is_string($keyTopics)) {
+                    $keyTopics = array_values(array_filter(array_map('trim', preg_split('/[,;]+/', $keyTopics))));
+                }
+                if (! is_array($keyTopics)) {
+                    $keyTopics = [];
+                }
+                $resources = $s['resources'] ?? $s['resource_links'] ?? $s['links'] ?? [];
+                if (is_string($resources)) {
+                    $resources = array_values(array_filter(array_map('trim', preg_split('/[,;]+/', $resources))));
+                }
+                if (! is_array($resources)) {
+                    $resources = [];
+                }
+                $normalizedResources = [];
+                foreach ($resources as $resource) {
+                    if (is_string($resource)) {
+                        $trimmed = trim($resource);
+                        if ($trimmed !== '') {
+                            $normalizedResources[] = ['title' => $trimmed, 'url' => $trimmed, 'type' => ''];
+                        }
+                        continue;
+                    }
+                    if (! is_array($resource)) {
+                        continue;
+                    }
+                    $title = (string) ($resource['title'] ?? $resource['name'] ?? $resource['label'] ?? '');
+                    $url = (string) ($resource['url'] ?? $resource['link'] ?? '');
+                    if ($title === '' && $url !== '') {
+                        $title = $url;
+                    }
+                    if ($url === '' && $title !== '') {
+                        $url = $title;
+                    }
+                    $normalizedResources[] = [
+                        'title' => $title,
+                        'url' => $url,
+                        'type' => (string) ($resource['type'] ?? $resource['kind'] ?? ''),
+                    ];
+                }
+                $resources = $normalizedResources;
+                $subjectVal = (string) ($s['subject'] ?? 'Study Session');
+                $topicVal = (string) ($s['topic'] ?? '');
+                if (empty($keyTopics)) {
+                    $keyTopics = $this->defaultKeyTopics($subjectVal, $topicVal);
+                }
+                if (empty($resources)) {
+                    $resources = $this->defaultResources($subjectVal);
+                }
                 $out[] = [
-                    'subject' => (string) ($s['subject'] ?? 'Study Session'),
-                    'topic' => (string) ($s['topic'] ?? ''),
+                    'subject' => $subjectVal,
+                    'topic' => $topicVal,
                     'duration_minutes' => $this->parseDuration($s['duration_minutes'] ?? $s['duration'] ?? null),
                     'focus_level' => in_array($s['focus_level'] ?? '', ['low', 'medium', 'high'], true)
                         ? $s['focus_level']
                         : 'medium',
+                    'key_topics' => $keyTopics,
+                    'resources' => $resources,
                 ];
 
                 continue;
@@ -375,23 +432,78 @@ class StudyPlanService
                 if (str_starts_with($trimmed, '{')) {
                     $decoded = json_decode($trimmed, true);
                     if (is_array($decoded) && isset($decoded['subject'])) {
+                        $keyTopics = $decoded['key_topics'] ?? $decoded['keyTopics'] ?? $decoded['topics'] ?? $decoded['key_points'] ?? [];
+                        if (is_string($keyTopics)) {
+                            $keyTopics = array_values(array_filter(array_map('trim', preg_split('/[,;]+/', $keyTopics))));
+                        }
+                        if (! is_array($keyTopics)) {
+                            $keyTopics = [];
+                        }
+                        $resources = $decoded['resources'] ?? $decoded['resource_links'] ?? $decoded['links'] ?? [];
+                        if (is_string($resources)) {
+                            $resources = array_values(array_filter(array_map('trim', preg_split('/[,;]+/', $resources))));
+                        }
+                        if (! is_array($resources)) {
+                            $resources = [];
+                        }
+                        $normalizedResources = [];
+                        foreach ($resources as $resource) {
+                            if (is_string($resource)) {
+                                $trimmed = trim($resource);
+                                if ($trimmed !== '') {
+                                    $normalizedResources[] = ['title' => $trimmed, 'url' => $trimmed, 'type' => ''];
+                                }
+                                continue;
+                            }
+                            if (! is_array($resource)) {
+                                continue;
+                            }
+                            $title = (string) ($resource['title'] ?? $resource['name'] ?? $resource['label'] ?? '');
+                            $url = (string) ($resource['url'] ?? $resource['link'] ?? '');
+                            if ($title === '' && $url !== '') {
+                                $title = $url;
+                            }
+                            if ($url === '' && $title !== '') {
+                                $url = $title;
+                            }
+                            $normalizedResources[] = [
+                                'title' => $title,
+                                'url' => $url,
+                                'type' => (string) ($resource['type'] ?? $resource['kind'] ?? ''),
+                            ];
+                        }
+                        $resources = $normalizedResources;
+                        $subjectVal = (string) ($decoded['subject'] ?? 'Study Session');
+                        $topicVal = (string) ($decoded['topic'] ?? '');
+                        if (empty($keyTopics)) {
+                            $keyTopics = $this->defaultKeyTopics($subjectVal, $topicVal);
+                        }
+                        if (empty($resources)) {
+                            $resources = $this->defaultResources($subjectVal);
+                        }
                         $out[] = [
-                            'subject' => (string) ($decoded['subject'] ?? 'Study Session'),
-                            'topic' => (string) ($decoded['topic'] ?? ''),
+                            'subject' => $subjectVal,
+                            'topic' => $topicVal,
                             'duration_minutes' => $this->parseDuration($decoded['duration_minutes'] ?? $decoded['duration'] ?? null),
                             'focus_level' => in_array($decoded['focus_level'] ?? '', ['low', 'medium', 'high'], true)
                                 ? $decoded['focus_level']
                                 : 'medium',
+                            'key_topics' => $keyTopics,
+                            'resources' => $resources,
                         ];
 
                         continue;
                     }
                 }
+                $subjectVal = trim(explode(':', $trimmed)[0] ?? 'Study Session');
+                $topicVal = $trimmed;
                 $out[] = [
-                    'subject' => trim(explode(':', $trimmed)[0] ?? 'Study Session'),
-                    'topic' => $trimmed,
+                    'subject' => $subjectVal,
+                    'topic' => $topicVal,
                     'duration_minutes' => 60,
                     'focus_level' => 'medium',
+                    'key_topics' => $this->defaultKeyTopics($subjectVal, $topicVal),
+                    'resources' => $this->defaultResources($subjectVal),
                 ];
 
                 continue;
@@ -399,6 +511,68 @@ class StudyPlanService
         }
 
         return $out;
+    }
+
+    protected function defaultKeyTopics(string $subject, string $topic): array
+    {
+        $base = trim($topic) !== '' ? $topic : $subject;
+        return [
+            $base.' overview',
+            'Core concepts and definitions',
+            'Practice exercises and review',
+        ];
+    }
+
+    protected function defaultResources(string $subject): array
+    {
+        $name = strtolower($subject);
+        $youtube = 'https://www.youtube.com/results?search_query='.rawurlencode($subject);
+        $docs = 'https://www.google.com/search?q='.rawurlencode($subject.' documentation');
+        if (str_contains($name, 'math')) {
+            return [
+                ['title' => 'Khan Academy Math', 'url' => 'https://www.khanacademy.org/math', 'type' => 'course'],
+                ['title' => "Paul's Online Math Notes", 'url' => 'https://tutorial.math.lamar.edu/', 'type' => 'article'],
+                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ];
+        }
+        if (str_contains($name, 'physics')) {
+            return [
+                ['title' => 'MIT OCW Physics I', 'url' => 'https://ocw.mit.edu/courses/8-01sc-classical-mechanics-fall-2016/', 'type' => 'course'],
+                ['title' => 'The Physics Classroom', 'url' => 'https://www.physicsclassroom.com/', 'type' => 'article'],
+                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ];
+        }
+        if (str_contains($name, 'typescript')) {
+            return [
+                ['title' => 'TypeScript Handbook', 'url' => 'https://www.typescriptlang.org/docs/', 'type' => 'article'],
+                ['title' => 'MDN TypeScript Guide', 'url' => 'https://developer.mozilla.org/en-US/docs/Web/TypeScript', 'type' => 'article'],
+                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ];
+        }
+        if (str_contains($name, 'machine learning')) {
+            return [
+                ['title' => 'Stanford CS229 Notes', 'url' => 'https://cs229.stanford.edu/notes2022fall', 'type' => 'article'],
+                ['title' => 'Andrew Ng ML Course', 'url' => 'https://www.coursera.org/learn/machine-learning', 'type' => 'course'],
+                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ];
+        }
+        if (str_contains($name, 'data science')) {
+            return [
+                ['title' => 'Kaggle Learn', 'url' => 'https://www.kaggle.com/learn', 'type' => 'course'],
+                ['title' => 'DataCamp Tutorials', 'url' => 'https://www.datacamp.com/tutorials', 'type' => 'article'],
+                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ];
+        }
+        return [
+            ['title' => 'Wikipedia Overview', 'url' => 'https://en.wikipedia.org', 'type' => 'article'],
+            ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
+            ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+        ];
     }
 
     protected function parseDuration(mixed $val): int

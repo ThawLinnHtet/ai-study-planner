@@ -18,6 +18,9 @@ class OpenRouter extends OpenAI
         protected bool $strict_response = false,
         protected ?\NeuronAI\Providers\HttpClientOptions $httpOptions = null,
     ) {
+        if ($this->model === 'google/gemini-2.0-flash') {
+            $this->model = 'google/gemini-2.0-flash-001';
+        }
         parent::__construct(
             key: $this->key,
             model: $this->model,

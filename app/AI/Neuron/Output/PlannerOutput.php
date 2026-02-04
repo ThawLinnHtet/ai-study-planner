@@ -17,6 +17,24 @@ class Session
 
     #[SchemaProperty(title: 'Focus Level', description: 'Intensity level required: low, medium, or high', required: true)]
     public string $focus_level;
+
+    #[SchemaProperty(title: 'Key Topics', description: 'Key concepts for this session', required: true)]
+    public array $key_topics = [];
+
+    #[SchemaProperty(title: 'Resources', description: 'Recommended external resources for this session', required: true)]
+    public array $resources = [];
+}
+
+class SubjectResource
+{
+    #[SchemaProperty(title: 'Title', description: 'Resource name', required: true)]
+    public string $title;
+
+    #[SchemaProperty(title: 'URL', description: 'Public resource link', required: true)]
+    public string $url;
+
+    #[SchemaProperty(title: 'Type', description: 'Resource type such as article, video, course, or textbook', required: true)]
+    public string $type;
 }
 
 class PlannerOutput

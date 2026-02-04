@@ -34,6 +34,12 @@ interface Session {
     topic: string;
     duration_minutes: number;
     focus_level: 'low' | 'medium' | 'high';
+    key_topics?: string[];
+    resources?: {
+        title: string;
+        url: string;
+        type: string;
+    }[];
 }
 
 interface DayPlan {
@@ -222,6 +228,8 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                         topic: cleanContent.trim(),
                         duration_minutes: 60,
                         focus_level: 'medium',
+                        key_topics: [],
+                        resources: [],
                     };
                 }
 
@@ -393,6 +401,35 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                             </Tooltip>
                                                         </TooltipProvider>
                                                     </div>
+                                                </div>
+                                                <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+                                                    {session.key_topics && session.key_topics.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1">
+                                                            {session.key_topics.map((topic, topicIdx) => (
+                                                                <Badge key={`${subj}-topic-${topicIdx}`} variant="secondary" className="text-[10px]">
+                                                                    {topic}
+                                                                </Badge>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-xs text-muted-foreground">Key topics will appear after regeneration.</p>
+                                                    )}
+                                                    {session.resources && session.resources.length > 0 ? (
+                                                        <div className="mt-2 space-y-1">
+                                                            {session.resources.map((resource, resourceIdx) => (
+                                                                <a
+                                                                    key={`${subj}-res-${resourceIdx}`}
+                                                                    href={resource.url}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="block text-xs text-primary hover:underline"
+                                                                >
+                                                                    {resource.title}
+                                                                    {resource.type ? ` • ${resource.type}` : ''}
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
                                                 </div>
                                             </CardContent>
                                         </Card>

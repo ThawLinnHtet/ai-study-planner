@@ -112,6 +112,15 @@ class StudyPlanController extends Controller
             $schedule[$day] = ['sessions' => $daySessions];
         }
 
+        $subjectsOverview = array_map(
+            fn ($subject) => [
+                'subject' => $subject,
+                'key_topics' => [],
+                'resources' => [],
+            ],
+            $subjects
+        );
+
         // Create the study plan
         StudyPlan::create([
             'user_id' => $user->id,
@@ -128,6 +137,7 @@ class StudyPlanController extends Controller
             'generated_plan' => [
                 'schedule' => $schedule,
                 'strategy_summary' => 'Basic study plan created to help you get started. You can refine this with AI recommendations later.',
+                'subjects_overview' => $subjectsOverview,
                 'weeks' => [
                     [
                         'week_start' => now()->startOfDay()->toDateString(),

@@ -53,7 +53,7 @@ class CleanPlannerAgent extends Agent
         // Remove ```json and ``` markdown wrappers
         $response = preg_replace('/^```json\s*/', '', $response);
         $response = preg_replace('/```\s*$/', '', $response);
-        
+
         // Trim whitespace
         return trim($response);
     }
@@ -67,24 +67,24 @@ class CleanPlannerAgent extends Agent
         $provider = $this->provider();
         $response = $provider->chat(is_array($messages) ? $messages : [$messages]);
         $content = $this->cleanResponse($response->getContent());
-        
+
         // Parse the cleaned JSON
         $data = json_decode($content, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             throw new \Exception('Failed to parse AI response: ' . json_last_error_msg() . '. Content: ' . $content);
         }
-        
+
         // Map to the output class
         $outputClass = $class ?: $this->getOutputClass();
         $output = new $outputClass();
-        
+
         // Fill the output object
         foreach ($data as $key => $value) {
             if (property_exists($output, $key)) {
                 $output->$key = $value;
             }
         }
-        
+
         return $output;
     }
 
@@ -126,6 +126,8 @@ CRITICAL REQUIREMENTS:
 3. Each day MUST contain a "sessions" array with session objects
 4. NEVER use numeric array keys like 0,1,2,3 for days
 5. Each session MUST have: subject (string), topic (string), duration_minutes (integer), focus_level (low|medium|high)
+6. Each session MUST include key_topics (3-6 items) and resources (2-4 items)
+7. Each resource includes: title, url, type (article, video, course, textbook, or tool)
 6. Start scheduling from today ({$currentDay})
 7. Do NOT wrap the schedule in a numeric array
 8. Return ONLY the JSON object, no markdown formatting, no explanations
@@ -167,12 +169,32 @@ Example format:
   "schedule": {
     "Monday": {
       "sessions": [
-        {"subject": "Mathematics", "topic": "Calculus", "duration_minutes": 60, "focus_level": "high"}
+        {
+          "subject": "Mathematics",
+          "topic": "Calculus",
+          "duration_minutes": 60,
+          "focus_level": "high",
+          "key_topics": ["Limits and continuity", "Derivatives", "Integrals"],
+          "resources": [
+            {"title": "Khan Academy Calculus", "url": "https://www.khanacademy.org/math/calculus-1", "type": "course"},
+            {"title": "Paul's Online Math Notes", "url": "https://tutorial.math.lamar.edu/Classes/CalcI/CalcI.aspx", "type": "article"}
+          ]
+        }
       ]
     },
     "Tuesday": {
       "sessions": [
-        {"subject": "Physics", "topic": "Mechanics", "duration_minutes": 45, "focus_level": "medium"}
+        {
+          "subject": "Physics",
+          "topic": "Mechanics",
+          "duration_minutes": 45,
+          "focus_level": "medium",
+          "key_topics": ["Newton's laws", "Free body diagrams", "Kinematics"],
+          "resources": [
+            {"title": "MIT OCW Physics I", "url": "https://ocw.mit.edu/courses/8-01sc-classical-mechanics-fall-2016/", "type": "course"},
+            {"title": "The Physics Classroom", "url": "https://www.physicsclassroom.com/class/newtlaws", "type": "article"}
+          ]
+        }
       ]
     }
   },
@@ -222,16 +244,28 @@ CRITICAL REQUIREMENTS:
 3. Each day MUST contain a "sessions" array with session objects
 4. NEVER use numeric array keys like 0,1,2,3 for days
 5. Each session MUST have: subject (string), topic (string), duration_minutes (integer), focus_level (low|medium|high)
-6. Do NOT wrap the schedule in a numeric array
-7. Generate NEW topics/chapters progressing from where the previous week left off
-8. Return ONLY the JSON object, no markdown formatting, no explanations
+6. Each session MUST include key_topics (3-6 items) and resources (2-4 items)
+7. Each resource includes: title, url, type (article, video, course, textbook, or tool)
+8. Do NOT wrap the schedule in a numeric array
+9. Generate NEW topics/chapters progressing from where the previous week left off
+10. Return ONLY the JSON object, no markdown formatting, no explanations
 
 Example format:
 {
   "schedule": {
     "Monday": {
       "sessions": [
-        {"subject": "Mathematics", "topic": "Advanced Calculus", "duration_minutes": 60, "focus_level": "high"}
+        {
+          "subject": "Mathematics",
+          "topic": "Advanced Calculus",
+          "duration_minutes": 60,
+          "focus_level": "high",
+          "key_topics": ["Multivariable limits", "Gradient and Jacobian", "Taylor series"],
+          "resources": [
+            {"title": "MIT OpenCourseWare Calculus", "url": "https://ocw.mit.edu/courses/18-01sc-single-variable-calculus-fall-2010/", "type": "course"},
+            {"title": "3Blue1Brown Calculus", "url": "https://www.youtube.com/playlist?list=PLZHQObOWTQDMsr9K-rj53DwVRMYO3t5Yr", "type": "video"}
+          ]
+        }
       ]
     }
   },

@@ -30,7 +30,7 @@ class CleanOptimizerAgent extends Agent
             steps: [
                 'The optimized_schedule MUST use day names (Monday, Tuesday, etc.) as keys.',
                 'Each day MUST contain a "sessions" array with session objects.',
-                'Each session MUST be an object with subject, topic, duration_minutes, focus_level.',
+                'Each session MUST be an object with subject, topic, duration_minutes, focus_level, key_topics, resources.',
                 'NEVER use numeric array keys like 0,1,2,3 for days.',
                 'Maintain the same subjects and topics but reorganize for better learning.',
                 'Duration for each session MUST be provided in minutes as "duration_minutes" (integer).',
@@ -134,10 +134,12 @@ CRITICAL REQUIREMENTS:
 3. Each day MUST contain a "sessions" array with session objects
 4. NEVER use numeric array keys like 0,1,2,3 for days
 5. Each session MUST have: subject (string), topic (string), duration_minutes (integer), focus_level (low|medium|high)
-6. IMPORTANT: Only use subjects from the user's onboarding data: {$subjects}
-7. Do NOT introduce new subjects not in the user's original list
-8. Do NOT wrap the schedule in a numeric array
-9. Return ONLY the JSON object, no markdown formatting, no explanations
+6. Each session MUST include key_topics (3-6 items) and resources (2-4 items)
+7. Each resource includes: title, url, type (article, video, course, textbook, or tool)
+8. IMPORTANT: Only use subjects from the user's onboarding data: {$subjects}
+9. Do NOT introduce new subjects not in the user's original list
+10. Do NOT wrap the schedule in a numeric array
+11. Return ONLY the JSON object, no markdown formatting, no explanations
 
 IMPORTANT - PERFORMANCE DATA HANDLING:
 10. IF has_performance_data is false: DO NOT make major topic changes. Only adjust timing, focus levels, and session structure. Preserve beginner topics and difficulty level.
@@ -176,7 +178,17 @@ Example format:
   "optimized_schedule": {
     "Monday": {
       "sessions": [
-        {"subject": "Mathematics", "topic": "Calculus", "duration_minutes": 60, "focus_level": "high"}
+        {
+          "subject": "Mathematics",
+          "topic": "Calculus",
+          "duration_minutes": 60,
+          "focus_level": "high",
+          "key_topics": ["Limits and continuity", "Derivatives", "Integrals"],
+          "resources": [
+            {"title": "Khan Academy Calculus", "url": "https://www.khanacademy.org/math/calculus-1", "type": "course"},
+            {"title": "Paul's Online Math Notes", "url": "https://tutorial.math.lamar.edu/Classes/CalcI/CalcI.aspx", "type": "article"}
+          ]
+        }
       ]
     }
   },
