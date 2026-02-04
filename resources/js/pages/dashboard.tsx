@@ -1,6 +1,5 @@
 import { Head } from '@inertiajs/react';
 import { Link } from '@inertiajs/react';
-import { router } from '@inertiajs/react';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import {
     Zap,
@@ -12,7 +11,6 @@ import {
     Brain,
     AlertCircle
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -48,7 +46,6 @@ interface CompletedSession {
 interface Props {
     plan?: Plan;
     completedToday: CompletedSession[];
-    onboardingCompleted: boolean;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -58,121 +55,43 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function Dashboard({ plan, completedToday, onboardingCompleted }: Props) {
-    const [refreshCount, setRefreshCount] = useState(0);
-    const [isChecking, setIsChecking] = useState(false);
-
-    // Auto-refresh to check for plan creation (only if onboarding is completed)
-    useEffect(() => {
-        if (!plan && onboardingCompleted && refreshCount < 10) { // Check up to 10 times
-            const timer = setTimeout(() => {
-                setIsChecking(true);
-                router.reload({ only: ['plan'] });
-                setRefreshCount(prev => prev + 1);
-            }, 3000); // Check every 3 seconds
-
-            return () => clearTimeout(timer);
-        }
-    }, [plan, onboardingCompleted, refreshCount]);
-
+export default function Dashboard({ plan, completedToday }: Props) {
     if (!plan) {
         return (
             <AppLayout breadcrumbs={breadcrumbs}>
                 <Head title="Dashboard" />
                 <div className="flex flex-col items-center justify-center min-h-[60vh] p-6 text-center">
-                    {onboardingCompleted ? (
-                        <>
-                            <Brain className="w-12 h-12 text-primary mb-4 animate-pulse" />
-                            <h2 className="text-2xl font-bold">Creating Your Study Plan...</h2>
-                            <p className="text-muted-foreground mt-2 max-w-md">
-                                Neuron AI is crafting your personalized study schedule. This usually takes a few moments.
-                            </p>
-                            <div className="mt-6 space-y-2">
-                                <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
-                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
-                                    <div className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    {isChecking ? 'Checking for your plan...' : 'Please wait while we generate your plan...'}
-                                </p>
-                                {refreshCount > 5 && (
-                                    <p className="text-xs text-amber-600">Taking longer than expected - AI is working hard!</p>
-                                )}
-                            </div>
-                            <div className="mt-8 space-y-4">
-                                <Link href="/study-planner">
-                                    <Button variant="outline">
-                                        Check Study Planner
-                                    </Button>
-                                </Link>
-                                <div className="text-center space-y-2">
-                                    <button
-                                        onClick={() => router.reload()}
-                                        className="text-sm text-muted-foreground hover:text-primary"
-                                    >
-                                        Refresh manually
-                                    </button>
-                                    <div>
-                                        <Link href="/onboarding" className="text-sm text-muted-foreground hover:text-primary block">
-                                            Need to adjust your onboarding settings?
-                                        </Link>
-                                    </div>
-                                </div>
-                            </div>
-                        </>
-                    ) : (
-                        <>
-                            <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
-                            <h2 className="text-2xl font-bold">Welcome!</h2>
-                            <p className="text-muted-foreground mt-2 max-w-md">
-                                Your personalized study space is ready. Complete the onboarding to generate your first AI-powered study plan.
-                            </p>
-                            <Link href="/onboarding">
-                                <Button className="mt-6">
-                                    Complete Setup
-                                </Button>
-                            </Link>
-                        </>
-                    )}
+                    <AlertCircle className="w-12 h-12 text-muted-foreground mb-4" />
+                    <h2 className="text-2xl font-bold">Welcome!</h2>
+                    <p className="text-muted-foreground mt-2 max-w-md">
+                        Your personalized study space is ready. Complete the onboarding to generate your first AI-powered study plan.
+                    </p>
+                    <Link href="/onboarding">
+                        <Button className="mt-6">
+                            Complete Setup
+                        </Button>
+                    </Link>
                 </div>
             </AppLayout>
         );
     }
 
-    const getSubjectDisplay = (s: unknown) => {
-        if (!s || typeof s !== 'object') return 'Study Session';
-        const record = s as { subject?: unknown };
-        let value = record.subject;
-
-        if (value && typeof value === 'object' && 'subject' in (value as { subject?: unknown })) {
-            value = (value as { subject?: unknown }).subject;
-        }
-
-        if (typeof value !== 'string') return 'Study Session';
-        if (value === '[object Object]' || value === 'undefined') return 'Study Session';
-        return value;
+    const getSubjectDisplay = (s: { subject?: string; topic?: string } | any) => {
+        if (!s) return 'Study Session';
+        const v = typeof s.subject === 'string' ? s.subject : s.subject?.subject;
+        const out = v ?? 'Study Session';
+        return out === '[object Object]' || out === 'undefined' ? 'Study Session' : out;
     };
-    const getTopicDisplay = (s: unknown) => {
-        if (!s || typeof s !== 'object') return '';
-        const record = s as { topic?: unknown };
-        let value = record.topic;
-
-        if (value && typeof value === 'object' && 'topic' in (value as { topic?: unknown })) {
-            value = (value as { topic?: unknown }).topic;
-        }
-
-        if (typeof value !== 'string') return '';
-        const str = value;
+    const getTopicDisplay = (s: { topic?: string } | any) => {
+        if (!s) return '';
+        const v = typeof s.topic === 'string' ? s.topic : s.topic?.topic;
+        if (v == null) return '';
+        const str = String(v);
         return str === '[object Object]' ? '' : str.slice(0, 120);
     };
 
     const todayName = format(new Date(), 'EEEE');
-    const rawScheduleSource =
-        plan?.generated_plan?.schedule ??
-        (plan?.generated_plan as { optimized_schedule?: Record<string, unknown> })?.optimized_schedule ??
-        {};
-    const rawSchedule = rawScheduleSource as Record<string, unknown>;
+    const rawSchedule = plan?.generated_plan?.schedule || (plan?.generated_plan as any)?.optimized_schedule || {};
 
     // Check if today is within plan range (guard against null dates)
     const planStart = plan.starts_on ? startOfDay(parseISO(plan.starts_on)) : startOfDay(new Date());
@@ -180,74 +99,32 @@ export default function Dashboard({ plan, completedToday, onboardingCompleted }:
     const today = startOfDay(new Date());
     const isWithinRange = today >= planStart && today <= planEnd;
 
-    const resolveDayData = (schedule: Record<string, unknown>, dayName: string): unknown => {
-        if (dayName in schedule) {
-            return schedule[dayName];
-        }
+    // 1. Find today's data (handle numeric indices, direct keys, or nested day objects)
+    let dayData: any = isWithinRange ? (rawSchedule[todayName] || Object.values(rawSchedule).find((v: any) => v[todayName])) : null;
+    if (dayData && dayData[todayName]) dayData = dayData[todayName];
 
-        for (const value of Object.values(schedule)) {
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
-                const record = value as Record<string, unknown>;
-                if (dayName in record) {
-                    return record[dayName];
-                }
+    // 2. Extract and sanitize sessions
+    const rawSessions = dayData?.sessions || (Array.isArray(dayData) ? dayData : []);
+    const todaySessions: Session[] = rawSessions
+        .filter((s: any) => s != null)
+        .map((s: any) => {
+            if (typeof s === 'string') {
+                // Regex to strip time range: "6:00 PM - 7:00 PM: Typebox" -> "Typebox"
+                const cleanContent = s.replace(/^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i, '');
+
+                // Extract subject (text before first paren or dash)
+                const subjectMatch = cleanContent.match(/^([^(\-]+)/);
+                const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
+
+                return {
+                    subject: subject,
+                    topic: cleanContent.trim(),
+                    duration_minutes: 60,
+                    focus_level: 'medium'
+                };
             }
-        }
-
-        return null;
-    };
-
-    const unwrapDayData = (data: unknown, dayName: string): unknown => {
-        if (data && typeof data === 'object' && !Array.isArray(data)) {
-            const record = data as Record<string, unknown>;
-            if (dayName in record) {
-                return record[dayName];
-            }
-        }
-        return data;
-    };
-
-    const normalizeSessions = (data: unknown): Session[] => {
-        const collected: unknown[] = [];
-
-        if (Array.isArray(data)) {
-            collected.push(...data);
-        } else if (data && typeof data === 'object') {
-            const record = data as Record<string, unknown>;
-            if (Array.isArray(record.sessions)) {
-                collected.push(...record.sessions);
-            }
-        }
-
-        return collected
-            .filter((value): value is string | Session => value != null)
-            .map((value) => {
-                if (typeof value === 'string') {
-                    const cleanContent = value.replace(
-                        /^\d{1,2}:\d{2}\s*(?:AM|PM)\s*-\s*\d{1,2}:\d{2}\s*(?:AM|PM):\s*/i,
-                        '',
-                    );
-
-                    const subjectMatch = cleanContent.match(/^([^(-]+)/);
-                    const subject = subjectMatch ? subjectMatch[1].trim() : 'Study Session';
-
-                    return {
-                        subject: subject,
-                        topic: cleanContent.trim(),
-                        duration_minutes: 60,
-                        focus_level: 'medium',
-                    };
-                }
-
-                return value as Session;
-            });
-    };
-
-    const dayDataRaw = isWithinRange ? resolveDayData(rawSchedule, todayName) : null;
-    const dayData = unwrapDayData(dayDataRaw, todayName);
-
-    const rawSessionsToday = normalizeSessions(dayData);
-    const todaySessions: Session[] = rawSessionsToday;
+            return s;
+        });
     const totalMinutes = todaySessions.reduce((acc, s) => acc + s.duration_minutes, 0);
     const completedCount = completedToday.length;
     const progressPercent = todaySessions.length > 0
@@ -260,12 +137,14 @@ export default function Dashboard({ plan, completedToday, onboardingCompleted }:
         const dayName = format(date, 'EEEE');
         const isInRange = date >= planStart && date <= planEnd;
 
-        const dayDataRawInner = isInRange ? resolveDayData(rawSchedule, dayName) : null;
-        const dayDataInner = unwrapDayData(dayDataRawInner, dayName);
+        let dayData: any = isInRange ? (rawSchedule[dayName] || Object.values(rawSchedule).find((v: any) => v[dayName])) : null;
+        if (dayData && dayData[dayName]) dayData = dayData[dayName];
 
-        const sessions = normalizeSessions(dayDataInner).map((s) => ({
-            subject: getSubjectDisplay(s),
-        }));
+        const sessions = (dayData?.sessions || (Array.isArray(dayData) ? dayData : [])).map((s: any) => {
+            if (s == null) return { subject: 'Study Session' };
+            if (typeof s === 'string') return { subject: s.split(':')[0].trim() };
+            return s;
+        });
 
         return {
             date,

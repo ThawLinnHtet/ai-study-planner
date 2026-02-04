@@ -17,7 +17,11 @@ import {
     ChevronLeft,
     ChevronRight,
     RefreshCw,
-    AlertCircle
+    AlertCircle,
+    BookOpen,
+    Flame,
+    Sparkles,
+    Link2
 } from 'lucide-react';
 import { useState, useMemo } from 'react';
 import Heading from '@/components/heading';
@@ -366,12 +370,33 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                     </button>
 
                                                     <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-1">
+                                                        <div className="flex items-center gap-2 mb-2">
                                                             <h4 className={cn("font-bold text-lg truncate", done && "line-through")}>
                                                                 {subj}
                                                             </h4>
-                                                            <Badge variant="secondary" className="text-[10px] h-5">
+                                                            <Badge variant="secondary" className="text-[10px] h-5 gap-1">
+                                                                <Flame className="w-3 h-3" />
                                                                 {(session.focus_level ?? 'medium').toUpperCase()}
+                                                            </Badge>
+                                                            {session.focus_level === 'high' ? (
+                                                                <Badge className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border border-primary/20">
+                                                                    <Sparkles className="w-3 h-3" />
+                                                                    Deep Work
+                                                                </Badge>
+                                                            ) : null}
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                            <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                                                                <BookOpen className="w-3 h-3" />
+                                                                Session
+                                                            </Badge>
+                                                            <Badge variant="outline" className="text-[10px] h-5 gap-1">
+                                                                <Clock className="w-3 h-3" />
+                                                                {formatDuration(session.duration_minutes)}
+                                                            </Badge>
+                                                            <Badge variant="outline" className={cn("text-[10px] h-5 gap-1", done ? "border-emerald-500/40 text-emerald-600" : "border-amber-500/40 text-amber-600")}>
+                                                                {done ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
+                                                                {done ? 'Completed' : 'Up Next'}
                                                             </Badge>
                                                         </div>
                                                         <p className="text-muted-foreground text-sm line-clamp-1 italic">
@@ -402,32 +427,49 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                         </TooltipProvider>
                                                     </div>
                                                 </div>
-                                                <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+                                                    <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
                                                     {session.key_topics && session.key_topics.length > 0 ? (
-                                                        <div className="flex flex-wrap gap-1">
-                                                            {session.key_topics.map((topic, topicIdx) => (
-                                                                <Badge key={`${subj}-topic-${topicIdx}`} variant="secondary" className="text-[10px]">
-                                                                    {topic}
-                                                                </Badge>
-                                                            ))}
+                                                        <div className="space-y-2">
+                                                            <Badge variant="outline" className="text-[11px] h-6 gap-1">
+                                                                <Sparkles className="w-3 h-3" />
+                                                                Key Topics
+                                                            </Badge>
+                                                            <div className="flex flex-wrap gap-1">
+                                                                {session.key_topics.map((topic, topicIdx) => (
+                                                                    <Badge key={`${subj}-topic-${topicIdx}`} variant="secondary" className="text-xs">
+                                                                        {topic}
+                                                                    </Badge>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     ) : (
                                                         <p className="text-xs text-muted-foreground">Key topics will appear after regeneration.</p>
                                                     )}
                                                     {session.resources && session.resources.length > 0 ? (
-                                                        <div className="mt-2 space-y-1">
-                                                            {session.resources.map((resource, resourceIdx) => (
-                                                                <a
-                                                                    key={`${subj}-res-${resourceIdx}`}
-                                                                    href={resource.url}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                    className="block text-xs text-primary hover:underline"
-                                                                >
-                                                                    {resource.title}
-                                                                    {resource.type ? ` • ${resource.type}` : ''}
-                                                                </a>
-                                                            ))}
+                                                        <div className="mt-3 space-y-2">
+                                                            <Badge variant="outline" className="text-[11px] h-6 gap-1">
+                                                                <Link2 className="w-3 h-3" />
+                                                                Resources
+                                                            </Badge>
+                                                            <div className="space-y-1">
+                                                                {session.resources.map((resource, resourceIdx) => (
+                                                                    <a
+                                                                        key={`${subj}-res-${resourceIdx}`}
+                                                                        href={resource.url}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="flex items-center gap-2 text-sm text-primary hover:underline"
+                                                                    >
+                                                                        <Link2 className="w-3 h-3" />
+                                                                        <span className="truncate">{resource.title}</span>
+                                                                        {resource.type ? (
+                                                                            <Badge variant="secondary" className="text-[10px] h-5">
+                                                                                {resource.type}
+                                                                            </Badge>
+                                                                        ) : null}
+                                                                    </a>
+                                                                ))}
+                                                            </div>
                                                         </div>
                                                     ) : null}
                                                 </div>
