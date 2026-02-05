@@ -50,4 +50,10 @@ class AiTutorController extends Controller
 
         return response()->json($result);
     }
+
+    public function deleteThread(Request $request, string $threadId): JsonResponse
+    {
+        $this->chat->deleteThread($request->user(), $threadId);
+        return response()->json(['success' => true]);
+    }
 }

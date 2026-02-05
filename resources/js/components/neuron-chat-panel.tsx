@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Send } from 'lucide-react';
+import { Send, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -77,6 +77,20 @@ async function getJson<T>(url: string): Promise<T> {
     return (await res.json()) as T;
 }
 
+async function deleteJson(url: string): Promise<void> {
+    const res = await fetch(url, {
+        method: 'DELETE',
+        headers: {
+            'X-CSRF-TOKEN': getCsrfToken(),
+        },
+    });
+
+    if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || 'Request failed');
+    }
+}
+
 export default function NeuronChatPanel({
     initialThreadId,
     initialThreads = [],
@@ -143,6 +157,18 @@ export default function NeuronChatPanel({
             setError(e instanceof Error ? e.message : 'Failed to create thread');
         } finally {
             setLoadingThread(false);
+        }
+    };
+
+    const deleteThread = async (idToDelete: string) => {
+        try {
+            await deleteJson(`/ai-tutor/threads/${encodeURIComponent(idToDelete)}`);
+            await refreshThreads();
+            if (idToDelete === threadId) {
+                await newThread();
+            }
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Failed to delete thread');
         }
     };
 
@@ -222,21 +248,36 @@ export default function NeuronChatPanel({
 
                     <div className="mt-3 flex flex-wrap gap-2">
                         {threads.slice(0, 6).map((t) => (
-                            <button
+                            <div
                                 key={t.thread_id}
-                                type="button"
-                                onClick={() => openThread(t.thread_id)}
                                 className={cn(
-                                    'group rounded-full border px-3 py-1 text-left text-xs transition-colors',
+                                    'group flex items-center gap-1 rounded-full border px-3 py-1 text-left text-xs transition-colors',
                                     t.thread_id === threadId
                                         ? 'border-primary/50 bg-primary/10 text-primary'
                                         : 'border-border/70 bg-background/60 hover:bg-muted',
                                 )}
                             >
-                                <span className="max-w-[240px] truncate block">
-                                    {t.preview || 'New conversation'}
-                                </span>
-                            </button>
+                                <button
+                                    type="button"
+                                    onClick={() => openThread(t.thread_id)}
+                                    className="flex-1 truncate text-left"
+                                >
+                                    <span className="max-w-[200px] truncate block">
+                                        {t.preview || 'New conversation'}
+                                    </span>
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteThread(t.thread_id);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-destructive"
+                                    title="Delete thread"
+                                >
+                                    <Trash2 className="h-3 w-3" />
+                                </button>
+                            </div>
                         ))}
                     </div>
                 </div>

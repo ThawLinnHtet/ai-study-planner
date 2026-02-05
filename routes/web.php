@@ -38,6 +38,9 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
 
         Route::post('send', [\App\Http\Controllers\AiTutorController::class, 'send'])
             ->name('ai-tutor.send');
+
+        Route::delete('threads/{threadId}', [\App\Http\Controllers\AiTutorController::class, 'deleteThread'])
+            ->name('ai-tutor.delete');
     });
 
     Route::get('quizzes', function () {
