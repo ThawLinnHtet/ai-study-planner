@@ -22,11 +22,12 @@ export type NeuronChatMessage = {
 };
 
 type Props = {
-    initialThreadId: string;
+    initialThreadId?: string;
     initialThreads?: NeuronChatThread[];
     initialMessages?: NeuronChatMessage[];
     className?: string;
     variant?: 'page' | 'widget';
+    onMessagesChange?: (messages: NeuronChatMessage[]) => void;
 };
 
 const SUGGESTIONS: string[] = [
@@ -97,6 +98,7 @@ export default function NeuronChatPanel({
     initialMessages = [],
     className,
     variant = 'widget',
+    onMessagesChange,
 }: Props) {
     const [threadId, setThreadId] = useState(initialThreadId);
     const [threads, setThreads] = useState<NeuronChatThread[]>(initialThreads);
@@ -120,6 +122,15 @@ export default function NeuronChatPanel({
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
     }, [messages]);
+
+    // Notify parent component when messages change (for persistence)
+    const prevMessagesRef = useRef(messages);
+    useEffect(() => {
+        if (onMessagesChange && JSON.stringify(prevMessagesRef.current) !== JSON.stringify(messages)) {
+            onMessagesChange(messages);
+            prevMessagesRef.current = messages;
+        }
+    }, [messages, onMessagesChange]);
 
     const refreshThreads = async () => {
         try {
@@ -244,11 +255,11 @@ export default function NeuronChatPanel({
                     <div className="px-4 pb-3">
                         <div className="flex gap-2 overflow-x-auto">
                             {threads.slice(0, 3).map((t) => (
-                                <button
+                                <div
                                     key={t.thread_id}
                                     onClick={() => openThread(t.thread_id)}
                                     className={cn(
-                                        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm',
+                                        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm cursor-pointer',
                                         t.thread_id === threadId
                                             ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25'
                                             : 'bg-white/70 dark:bg-slate-700/70 hover:bg-white/90 dark:hover:bg-slate-700/90 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50',
@@ -257,16 +268,16 @@ export default function NeuronChatPanel({
                                     <span className="max-w-[100px] truncate font-medium">
                                         {t.preview || 'New chat'}
                                     </span>
-                                    <button
+                                    <span
                                         onClick={(e) => {
                                             e.stopPropagation();
                                             deleteThread(t.thread_id);
                                         }}
-                                        className="opacity-70 hover:opacity-100 transition-opacity"
+                                        className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                                     >
                                         <Trash2 className="h-3 w-3" />
-                                    </button>
-                                </button>
+                                    </span>
+                                </div>
                             ))}
                         </div>
                     </div>

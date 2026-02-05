@@ -7,7 +7,7 @@ import NeuronChatPanel, {
     type NeuronChatThread,
 } from '@/components/neuron-chat-panel';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { cn } from '@/lib/utils';
 import type { SharedData } from '@/types';
 
@@ -15,62 +15,61 @@ type Props = {
     className?: string;
 };
 
+const STORAGE_KEY = 'neuron-chat-session';
+
+// Helper functions for sessionStorage
+const saveToSession = (data: { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] }) => {
+    try {
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.error('Failed to save to sessionStorage:', e);
+    }
+};
+
+const loadFromSession = (): { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] } | null => {
+    try {
+        const data = sessionStorage.getItem(STORAGE_KEY);
+        if (data) {
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error('Failed to load from sessionStorage:', e);
+    }
+    return null;
+};
+
 export default function NeuronChatWidget({ className }: Props) {
     const page = usePage<SharedData>();
     const user = page.props.auth?.user;
     const [open, setOpen] = useState(false);
-    const [chatData, setChatData] = useState({
-        threadId: '',
-        threads: [] as NeuronChatThread[],
-        messages: [] as NeuronChatMessage[],
+    const [chatData, setChatData] = useState<{
+        threadId: string;
+        threads: NeuronChatThread[];
+        messages: NeuronChatMessage[];
+    }>(() => {
+        // Try to load from sessionStorage first
+        const stored = loadFromSession();
+        // Use sessionStorage if it has ANY chat messages (main persistence indicator)
+        if (stored && stored.messages.length > 0) {
+            return stored;
+        }
+
+        // Otherwise use page props
+        const initialThreadId = (page.props as unknown as { threadId?: string }).threadId || '';
+        const initialThreads = (page.props as unknown as { threads?: NeuronChatThread[] }).threads || [];
+        const initialMessages = (page.props as unknown as { messages?: NeuronChatMessage[] }).messages || [];
+
+        const data = { threadId: initialThreadId, threads: initialThreads, messages: initialMessages };
+        saveToSession(data);
+        return data;
     });
 
     if (!user) return null;
 
-    // Initialize chat data from page props
+    // Save to sessionStorage whenever chatData changes
     useEffect(() => {
-        const initialThreadId = (page.props as unknown as {
-            threadId?: string;
-        }).threadId || '';
-
-        const initialThreads = (page.props as unknown as {
-            threads?: NeuronChatThread[];
-        }).threads || [];
-
-        const initialMessages = (page.props as unknown as {
-            messages?: NeuronChatMessage[];
-        }).messages || [];
-
-        setChatData({
-            threadId: initialThreadId,
-            threads: initialThreads,
-            messages: initialMessages,
-        });
-    }, [page.props]);
-
-    // Refresh chat data when widget opens
-    useEffect(() => {
-        if (open) {
-            // Fetch latest chat data when opening
-            fetch('/ai-tutor/threads')
-                .then(res => res.json())
-                .then(data => {
-                    const latestThread = data.threads?.[0];
-                    if (latestThread) {
-                        return fetch(`/ai-tutor/threads/${latestThread.thread_id}`)
-                            .then(res => res.json())
-                            .then(messageData => {
-                                setChatData({
-                                    threadId: latestThread.thread_id,
-                                    threads: data.threads || [],
-                                    messages: messageData.messages || [],
-                                });
-                            });
-                    }
-                })
-                .catch(console.error);
-        }
-    }, [open]);
+        saveToSession(chatData);
+    }, [chatData]);
 
     return (
         <div className={cn('fixed bottom-5 right-5 z-40', className)}>
@@ -106,6 +105,9 @@ export default function NeuronChatWidget({ className }: Props) {
                 <SheetContent side="right" className="w-[420px] max-w-[92vw] p-0">
                     <SheetHeader className="sr-only">
                         <SheetTitle>Neuron Chat</SheetTitle>
+                        <SheetDescription>
+                            AI study assistant chat interface for personalized learning guidance
+                        </SheetDescription>
                     </SheetHeader>
                     <div className="h-dvh max-h-dvh">
                         <NeuronChatPanel
@@ -114,6 +116,14 @@ export default function NeuronChatWidget({ className }: Props) {
                             initialMessages={chatData.messages}
                             variant="widget"
                             className="h-full rounded-none border-0"
+                            onMessagesChange={(newMessages) => {
+                                // Update widget state when messages change in panel
+                                setChatData(prev => {
+                                    const updated = { ...prev, messages: newMessages };
+                                    saveToSession(updated);
+                                    return updated;
+                                });
+                            }}
                         />
                     </div>
                 </SheetContent>
