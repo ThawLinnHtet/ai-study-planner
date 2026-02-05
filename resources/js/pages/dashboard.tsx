@@ -9,7 +9,9 @@ import {
     ArrowRight,
     Target,
     Brain,
-    AlertCircle
+    AlertCircle,
+    Flame,
+    Sparkles
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -43,9 +45,30 @@ interface CompletedSession {
     id: number;
 }
 
+type ProgressStats = {
+    xp: {
+        total: number;
+        level: number;
+        progress_percent: number;
+    };
+    streak: {
+        current: number;
+        best: number;
+    };
+    sessions: {
+        week: {
+            minutes: number;
+            target_minutes: number;
+            target_percent: number | null;
+        };
+    };
+    insight: string;
+};
+
 interface Props {
     plan?: Plan;
     completedToday: CompletedSession[];
+    progress: ProgressStats;
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -55,7 +78,7 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function Dashboard({ plan, completedToday }: Props) {
+export default function Dashboard({ plan, completedToday, progress }: Props) {
     if (!plan) {
         return (
             <AppLayout breadcrumbs={breadcrumbs}>
@@ -190,26 +213,45 @@ export default function Dashboard({ plan, completedToday }: Props) {
                         </CardContent>
                     </Card>
 
-                    {/* Streak / Stats */}
-                    <Card>
+                    <Card className="relative overflow-hidden">
+                        <div className="absolute top-0 right-0 p-4 opacity-10">
+                            <Sparkles className="w-20 h-20 -mr-6 -mt-6" />
+                        </div>
                         <CardHeader className="pb-2">
-                            <CardDescription>Next Session</CardDescription>
-                            <CardTitle className="flex items-center gap-2">
-                                <Clock className="w-5 h-5 text-primary" />
-                                {(() => {
-                                    const next = todaySessions.find((_, i) => i >= completedCount);
-                                    return next ? getSubjectDisplay(next) : 'Done for today!';
-                                })()}
+                            <CardDescription>Momentum</CardDescription>
+                            <CardTitle className="flex items-center justify-between gap-3">
+                                <span className="text-2xl font-bold">Level {progress.xp.level}</span>
+                                <Badge variant="secondary" className="gap-1">
+                                    <Flame className="w-3 h-3" />
+                                    {progress.streak.current}d
+                                </Badge>
                             </CardTitle>
                         </CardHeader>
-                        <CardContent>
-                            <div className="flex items-center gap-2 mt-2">
-                                <Badge variant="secondary" className="bg-amber-100 text-amber-700 hover:bg-amber-100 border-none">
-                                    <Zap className="w-3 h-3 mr-1 fill-amber-500 text-amber-500" />
-                                    Focus Mode
-                                </Badge>
-                                <span className="text-sm text-muted-foreground">Ready to start?</span>
+                        <CardContent className="space-y-4">
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{progress.xp.total.toLocaleString()} XP</span>
+                                    <span>{progress.xp.progress_percent}% to next</span>
+                                </div>
+                                <Progress value={progress.xp.progress_percent} className="h-2" />
                             </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className={cn('rounded-lg border bg-muted/30 p-3')}>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Best streak</div>
+                                    <div className="mt-1 text-lg font-bold">{progress.streak.best} days</div>
+                                </div>
+                                <div className={cn('rounded-lg border bg-muted/30 p-3')}>
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Weekly goal</div>
+                                    <div className="mt-1 text-lg font-bold">
+                                        {progress.sessions.week.target_percent == null ? '—' : `${progress.sessions.week.target_percent}%`}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <p className="text-xs text-muted-foreground italic leading-relaxed">
+                                {progress.insight}
+                            </p>
                         </CardContent>
                     </Card>
 

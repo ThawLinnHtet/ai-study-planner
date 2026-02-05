@@ -1,6 +1,5 @@
-import { Form } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { useRef } from 'react';
-import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -18,6 +17,9 @@ import { Label } from '@/components/ui/label';
 
 export default function DeleteUser() {
     const passwordInput = useRef<HTMLInputElement>(null);
+    const form = useForm({
+        password: '',
+    });
 
     return (
         <div className="space-y-6">
@@ -54,16 +56,18 @@ export default function DeleteUser() {
                             permanently delete your account.
                         </DialogDescription>
 
-                        <Form
-                            {...ProfileController.destroy.form()}
-                            options={{
-                                preserveScroll: true,
-                            }}
-                            onError={() => passwordInput.current?.focus()}
-                            resetOnSuccess
+                        <form
                             className="space-y-6"
+                            onSubmit={(e) => {
+                                e.preventDefault();
+                                form.delete('/settings/profile', {
+                                    preserveScroll: true,
+                                    onError: () => passwordInput.current?.focus(),
+                                    onSuccess: () => form.reset('password'),
+                                });
+                            }}
                         >
-                            {({ resetAndClearErrors, processing, errors }) => (
+                            {(() => (
                                 <>
                                     <div className="grid gap-2">
                                         <Label
@@ -80,18 +84,21 @@ export default function DeleteUser() {
                                             ref={passwordInput}
                                             placeholder="Password"
                                             autoComplete="current-password"
+                                            value={form.data.password}
+                                            onChange={(e) => form.setData('password', e.target.value)}
                                         />
 
-                                        <InputError message={errors.password} />
+                                        <InputError message={form.errors.password} />
                                     </div>
 
                                     <DialogFooter className="gap-2">
                                         <DialogClose asChild>
                                             <Button
                                                 variant="secondary"
-                                                onClick={() =>
-                                                    resetAndClearErrors()
-                                                }
+                                                onClick={() => {
+                                                    form.reset('password');
+                                                    form.clearErrors();
+                                                }}
                                             >
                                                 Cancel
                                             </Button>
@@ -99,7 +106,7 @@ export default function DeleteUser() {
 
                                         <Button
                                             variant="destructive"
-                                            disabled={processing}
+                                            disabled={form.processing}
                                             asChild
                                         >
                                             <button
@@ -111,8 +118,8 @@ export default function DeleteUser() {
                                         </Button>
                                     </DialogFooter>
                                 </>
-                            )}
-                        </Form>
+                            ))()}
+                        </form>
                     </DialogContent>
                 </Dialog>
             </div>

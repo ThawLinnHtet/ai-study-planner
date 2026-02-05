@@ -22,7 +22,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
-import { aiTutor, dashboard, progress, quizzes, studyPlanner } from '@/routes';
+import { dashboard, progress, quizzes, studyPlanner } from '@/routes';
 import { overview as settingsOverview } from '@/routes/settings';
 import type { NavItem } from '@/types';
 import AppLogo from './app-logo';
@@ -53,11 +53,6 @@ export function AppSidebar() {
             title: 'Study Planner',
             href: studyPlanner(),
             icon: CalendarClock,
-        },
-        {
-            title: 'AI Tutor',
-            href: aiTutor(),
-            icon: Bot,
         },
         {
             title: 'Quizzes',

@@ -1,7 +1,7 @@
 <?php
 
-use App\Http\Middleware\EnsureOnboarded;
 use Illuminate\Support\Facades\Route;
+use App\Http\Middleware\EnsureOnboarded;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
@@ -25,17 +25,27 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
     Route::post('study-plan/toggle-session', [\App\Http\Controllers\StudyPlanController::class, 'toggleSession'])
         ->name('study-plan.toggle-session');
 
-    Route::get('ai-tutor', function () {
-        return Inertia::render('ai-tutor');
-    })->name('ai-tutor');
+    
+    Route::prefix('ai-tutor')->group(function () {
+        Route::post('new-thread', [\App\Http\Controllers\AiTutorController::class, 'newThread'])
+            ->name('ai-tutor.new-thread');
+
+        Route::get('threads', [\App\Http\Controllers\AiTutorController::class, 'threads'])
+            ->name('ai-tutor.threads');
+
+        Route::get('threads/{threadId}', [\App\Http\Controllers\AiTutorController::class, 'messages'])
+            ->name('ai-tutor.messages');
+
+        Route::post('send', [\App\Http\Controllers\AiTutorController::class, 'send'])
+            ->name('ai-tutor.send');
+    });
 
     Route::get('quizzes', function () {
         return Inertia::render('quizzes');
     })->name('quizzes');
 
-    Route::get('progress', function () {
-        return Inertia::render('progress');
-    })->name('progress');
+    Route::get('progress', [\App\Http\Controllers\ProgressController::class, 'index'])
+        ->name('progress');
 });
 
 require __DIR__.'/onboarding.php';

@@ -1,6 +1,5 @@
 import { Transition } from '@headlessui/react';
-import { Form, Head, Link, usePage } from '@inertiajs/react';
-import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import DeleteUser from '@/components/delete-user';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -28,6 +27,10 @@ export default function Profile({
     status?: string;
 }) {
     const { auth } = usePage<SharedData>().props;
+    const form = useForm({
+        name: auth.user.name,
+        email: auth.user.email,
+    });
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -43,14 +46,16 @@ export default function Profile({
                         description="Update your name and email address"
                     />
 
-                    <Form
-                        {...ProfileController.update.form()}
-                        options={{
-                            preserveScroll: true,
-                        }}
+                    <form
                         className="space-y-6"
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            form.patch('/settings/profile', {
+                                preserveScroll: true,
+                            });
+                        }}
                     >
-                        {({ processing, recentlySuccessful, errors }) => (
+                        {(() => (
                             <>
                                 <div className="grid gap-2">
                                     <Label htmlFor="name">Name</Label>
@@ -58,7 +63,8 @@ export default function Profile({
                                     <Input
                                         id="name"
                                         className="mt-1 block w-full"
-                                        defaultValue={auth.user.name}
+                                        value={form.data.name}
+                                        onChange={(e) => form.setData('name', e.target.value)}
                                         name="name"
                                         required
                                         autoComplete="name"
@@ -67,7 +73,7 @@ export default function Profile({
 
                                     <InputError
                                         className="mt-2"
-                                        message={errors.name}
+                                        message={form.errors.name}
                                     />
                                 </div>
 
@@ -78,7 +84,8 @@ export default function Profile({
                                         id="email"
                                         type="email"
                                         className="mt-1 block w-full"
-                                        defaultValue={auth.user.email}
+                                        value={form.data.email}
+                                        onChange={(e) => form.setData('email', e.target.value)}
                                         name="email"
                                         required
                                         autoComplete="username"
@@ -87,7 +94,7 @@ export default function Profile({
 
                                     <InputError
                                         className="mt-2"
-                                        message={errors.email}
+                                        message={form.errors.email}
                                     />
                                 </div>
 
@@ -109,25 +116,25 @@ export default function Profile({
 
                                             {status ===
                                                 'verification-link-sent' && (
-                                                <div className="mt-2 text-sm font-medium text-green-600">
-                                                    A new verification link has
-                                                    been sent to your email
-                                                    address.
-                                                </div>
-                                            )}
+                                                    <div className="mt-2 text-sm font-medium text-green-600">
+                                                        A new verification link has
+                                                        been sent to your email
+                                                        address.
+                                                    </div>
+                                                )}
                                         </div>
                                     )}
 
                                 <div className="flex items-center gap-4">
                                     <Button
-                                        disabled={processing}
+                                        disabled={form.processing}
                                         data-test="update-profile-button"
                                     >
                                         Save
                                     </Button>
 
                                     <Transition
-                                        show={recentlySuccessful}
+                                        show={form.recentlySuccessful}
                                         enter="transition ease-in-out"
                                         enterFrom="opacity-0"
                                         leave="transition ease-in-out"
@@ -139,8 +146,8 @@ export default function Profile({
                                     </Transition>
                                 </div>
                             </>
-                        )}
-                    </Form>
+                        ))()}
+                    </form>
                 </div>
 
                 <DeleteUser />

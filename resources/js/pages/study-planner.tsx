@@ -13,7 +13,6 @@ import {
     Circle,
     Clock,
     Calendar as CalendarIcon,
-    Zap,
     ChevronLeft,
     ChevronRight,
     RefreshCw,
@@ -28,7 +27,9 @@ import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { toast } from '@/hooks/use-toast';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
@@ -74,6 +75,25 @@ interface CompletedSession {
 interface Props {
     plan?: Plan;
     completedSessions: CompletedSession[];
+    progress: {
+        xp: {
+            total: number;
+            level: number;
+            progress_percent: number;
+        };
+        streak: {
+            current: number;
+            best: number;
+        };
+        sessions: {
+            week: {
+                minutes: number;
+                target_minutes: number;
+                target_percent: number | null;
+            };
+        };
+        insight: string;
+    };
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -85,9 +105,10 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export default function StudyPlanner({ plan, completedSessions }: Props) {
+export default function StudyPlanner({ plan, completedSessions, progress }: Props) {
     const [selectedDate, setSelectedDate] = useState(new Date());
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+
 
     const form = useForm({
         subject: '',
@@ -138,6 +159,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
             preserveScroll: true
         });
     };
+
 
     const handleRebalance = () => {
         if (confirm('Neuron AI will analyze your recent progress and re-adjust your future schedule. Continue?')) {
@@ -296,6 +318,40 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                     </div>
                 </div>
 
+                <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
+                    <CardContent className="p-4 md:p-5">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div className="space-y-1">
+                                <div className="flex items-center gap-2">
+                                    <Badge variant="secondary" className="gap-1">
+                                        <Sparkles className="w-3 h-3" />
+                                        Level {progress.xp.level}
+                                    </Badge>
+                                    <Badge variant="secondary" className="gap-1">
+                                        <Flame className="w-3 h-3" />
+                                        {progress.streak.current} day streak
+                                    </Badge>
+                                    {progress.sessions.week.target_percent != null ? (
+                                        <Badge variant="outline" className="text-[10px]">
+                                            Weekly {progress.sessions.week.target_percent}%
+                                        </Badge>
+                                    ) : null}
+                                </div>
+                                <p className="text-sm text-muted-foreground italic">
+                                    {progress.insight}
+                                </p>
+                            </div>
+                            <div className="min-w-[260px] space-y-2">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{progress.xp.total.toLocaleString()} XP</span>
+                                    <span>{progress.xp.progress_percent}% to next</span>
+                                </div>
+                                <Progress value={progress.xp.progress_percent} className="h-2" />
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Week Navigation */}
                 <div className="flex items-center justify-between bg-card border rounded-xl p-2 shadow-sm">
                     <Button variant="ghost" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
@@ -413,7 +469,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                             <Tooltip>
                                                                 <TooltipTrigger asChild>
                                                                     <div className="p-1">
-                                                                        <Zap className={cn(
+                                                                        <Flame className={cn(
                                                                             "w-4 h-4",
                                                                             session.focus_level === 'high' ? "text-destructive" :
                                                                                 session.focus_level === 'medium' ? "text-amber-500" : "text-emerald-500"
@@ -427,7 +483,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                                                         </TooltipProvider>
                                                     </div>
                                                 </div>
-                                                    <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+                                                <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
                                                     {session.key_topics && session.key_topics.length > 0 ? (
                                                         <div className="space-y-2">
                                                             <Badge variant="outline" className="text-[11px] h-6 gap-1">
@@ -496,7 +552,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                         <Card className="bg-primary/5 border-primary/20">
                             <CardHeader className="pb-2">
                                 <CardTitle className="text-sm uppercase tracking-wider text-primary flex items-center gap-2">
-                                    <Zap className="w-4 h-4" />
+                                    <Sparkles className="w-4 h-4" />
                                     Neuron Logic
                                 </CardTitle>
                             </CardHeader>
@@ -526,6 +582,7 @@ export default function StudyPlanner({ plan, completedSessions }: Props) {
                     </div>
                 </div>
             </div>
+
         </AppLayout>
     );
 }
