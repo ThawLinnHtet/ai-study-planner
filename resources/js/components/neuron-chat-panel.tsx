@@ -32,7 +32,7 @@ type Props = {
 const SUGGESTIONS: string[] = [
     'What should I study today based on my plan?',
     'Summarize my recent progress and what to fix next.',
-    'Turn today’s sessions into a 3-step action plan.',
+    'Turn today\'s sessions into a 3-step action plan.',
     'Quiz me on the topic I studied most recently.',
 ];
 
@@ -116,22 +116,25 @@ export default function NeuronChatPanel({
     }, [variant]);
 
     useEffect(() => {
-        if (!scrollRef.current) return;
-        scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-    }, [messages.length, sending, loadingThread]);
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+        }
+    }, [messages]);
 
     const refreshThreads = async () => {
         try {
             const data = await getJson<{ threads: NeuronChatThread[] }>('/ai-tutor/threads');
-            setThreads(data.threads || []);
-        } catch {
-            // ignore
+            setThreads(data.threads);
+        } catch (e) {
+            console.error('Failed to refresh threads:', e);
         }
     };
 
     const openThread = async (nextThreadId: string) => {
-        setError(null);
+        if (nextThreadId === threadId) return;
+        
         setLoadingThread(true);
+        setError(null);
         try {
             const data = await getJson<{ thread_id: string; messages: NeuronChatMessage[] }>(
                 `/ai-tutor/threads/${encodeURIComponent(nextThreadId)}`,
@@ -322,7 +325,7 @@ export default function NeuronChatPanel({
                             <Separator />
 
                             <div className="text-xs text-muted-foreground">
-                                Tip: Ask “What’s my next best move?” for an action plan.
+                                Tip: Ask "What's my next best move?" for an action plan.
                             </div>
                         </div>
                     ) : null}
