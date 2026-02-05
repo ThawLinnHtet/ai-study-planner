@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 
 Artisan::command('neuron:test', function () {
     $this->info('Starting Neuron AI Test...');
@@ -28,3 +29,6 @@ Artisan::command('neuron:test', function () {
         $this->error('Test failed: '.$e->getMessage());
     }
 })->purpose('Quickly test the Neuron AI PlannerAgent');
+
+// Schedule auto-purge of soft-deleted AI messages daily at midnight
+Schedule::command('ai:purge-deleted --days=30')->daily();

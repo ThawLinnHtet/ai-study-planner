@@ -189,13 +189,16 @@ export default function NeuronChatPanel({
     const handleSend = async () => {
         const trimmed = draft.trim();
         if (!trimmed) return;
+        await sendMessage(trimmed);
+    };
 
+    const sendMessage = async (message: string) => {
         setError(null);
         setDraft('');
 
         const optimisticUser: NeuronChatMessage = {
             role: 'user',
-            content: trimmed,
+            content: message,
         };
         setMessages((prev) => [...prev, optimisticUser]);
 
@@ -205,7 +208,7 @@ export default function NeuronChatPanel({
                 '/ai-tutor/send',
                 {
                     thread_id: threadId || null,
-                    message: trimmed,
+                    message: message,
                 },
             );
 
@@ -250,38 +253,50 @@ export default function NeuronChatPanel({
                     </div>
                 </div>
 
-                {/* Thread Tabs - Only show if more than 1 thread */}
-                {threads.length > 1 && (
-                    <div className="px-4 pb-3">
-                        <div className="flex gap-2 overflow-x-auto">
-                            {threads.slice(0, 3).map((t) => (
-                                <div
-                                    key={t.thread_id}
-                                    onClick={() => openThread(t.thread_id)}
-                                    className={cn(
-                                        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm cursor-pointer',
-                                        t.thread_id === threadId
-                                            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25'
-                                            : 'bg-white/70 dark:bg-slate-700/70 hover:bg-white/90 dark:hover:bg-slate-700/90 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50',
-                                    )}
+                {/* Thread Tabs - Always show for new chat button and history */}
+                <div className="px-4 pb-3">
+                    <div className="flex gap-2 overflow-x-auto">
+                        {/* New Chat Button */}
+                        <button
+                            onClick={newThread}
+                            disabled={loadingThread}
+                            className={cn(
+                                'flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm',
+                                'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300',
+                                'disabled:opacity-50'
+                            )}
+                        >
+                            <span className="text-sm leading-none">+</span>
+                            <span>New Chat</span>
+                        </button>
+
+                        {threads.slice(0, 3).map((t) => (
+                            <div
+                                key={t.thread_id}
+                                onClick={() => openThread(t.thread_id)}
+                                className={cn(
+                                    'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm cursor-pointer',
+                                    t.thread_id === threadId
+                                        ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25'
+                                        : 'bg-white/70 dark:bg-slate-700/70 hover:bg-white/90 dark:hover:bg-slate-700/90 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50',
+                                )}
+                            >
+                                <span className="max-w-[100px] truncate font-medium">
+                                    {t.preview || 'New chat'}
+                                </span>
+                                <span
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        deleteThread(t.thread_id);
+                                    }}
+                                    className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
                                 >
-                                    <span className="max-w-[100px] truncate font-medium">
-                                        {t.preview || 'New chat'}
-                                    </span>
-                                    <span
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            deleteThread(t.thread_id);
-                                        }}
-                                        className="opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </span>
-                                </div>
-                            ))}
-                        </div>
+                                    <Trash2 className="h-3 w-3" />
+                                </span>
+                            </div>
+                        ))}
                     </div>
-                )}
+                </div>
             </div>
 
             {/* Messages Area */}
@@ -314,10 +329,7 @@ export default function NeuronChatPanel({
                                             <button
                                                 key={s}
                                                 type="button"
-                                                onClick={() => {
-                                                    setDraft(s);
-                                                    setTimeout(() => handleSend(), 0);
-                                                }}
+                                                onClick={() => sendMessage(s)}
                                                 disabled={sending}
                                                 className="text-left px-4 py-3 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 hover:from-blue-100 hover:to-purple-100 dark:hover:from-blue-900/30 dark:hover:to-purple-900/30 border border-blue-200/50 dark:border-blue-800/50 text-sm text-slate-700 dark:text-slate-200 transition-all shadow-sm"
                                             >
@@ -363,7 +375,60 @@ export default function NeuronChatPanel({
                                                 : 'bg-white/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-slate-700/50',
                                         )}
                                     >
-                                        <div className="whitespace-pre-wrap break-words">{m.content}</div>
+                                        <div className="whitespace-pre-wrap break-words">
+                                            {m.role === 'assistant' ? (
+                                                <div className="space-y-2">
+                                                    {m.content.split('\n').map((line, i) => {
+                                                        // Numbered list with bold header
+                                                        if (line.match(/^\d+\.\s+\*\*.*\*\*:/)) {
+                                                            const parts = line.split(':');
+                                                            const header = parts[0];
+                                                            const content = parts.slice(1).join(':');
+                                                            return (
+                                                                <div key={i} className="mb-3">
+                                                                    <div className="font-semibold text-blue-600 dark:text-blue-400 mb-1">
+                                                                        {header}
+                                                                    </div>
+                                                                    {content && (
+                                                                        <div className="text-slate-700 dark:text-slate-300 leading-relaxed">
+                                                                            {content}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        // Bullet point - show as plain text without marker
+                                                        else if (line.includes('☐')) {
+                                                            return (
+                                                                <div key={i} className="text-slate-700 dark:text-slate-300 leading-relaxed ml-4">
+                                                                    {line.replace('☐', '').trim()}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        // Bold text
+                                                        else if (line.includes('**')) {
+                                                            return (
+                                                                <div key={i}>
+                                                                    {line.split('**').map((part, idx) =>
+                                                                        idx % 2 === 1 ? <strong key={idx} className="text-blue-600 dark:text-blue-400">{part}</strong> : part
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        }
+                                                        // Regular line
+                                                        else if (line.trim()) {
+                                                            return <div key={i} className="leading-relaxed">{line}</div>;
+                                                        }
+                                                        // Empty line
+                                                        else {
+                                                            return <div key={i} className="h-1"></div>;
+                                                        }
+                                                    })}
+                                                </div>
+                                            ) : (
+                                                m.content
+                                            )}
+                                        </div>
                                     </div>
                                     {m.role === 'user' && (
                                         <div className="flex-shrink-0">

@@ -102,7 +102,7 @@ export default function NeuronChatWidget({ className }: Props) {
                     </motion.div>
                 </motion.div>
 
-                <SheetContent side="right" className="w-[420px] max-w-[92vw] p-0">
+                <SheetContent side="right" className="w-[420px] max-w-[92vw] p-0 [&>button]:top-4">
                     <SheetHeader className="sr-only">
                         <SheetTitle>Neuron Chat</SheetTitle>
                         <SheetDescription>

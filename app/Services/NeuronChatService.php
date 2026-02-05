@@ -76,11 +76,11 @@ class NeuronChatService
 
     public function deleteThread(User $user, string $threadId): void
     {
+        // Soft delete - sets deleted_at timestamp
         AiMessage::query()
             ->where('user_id', $user->id)
             ->where('thread_id', $threadId)
-            ->whereNull('deleted_at')
-            ->update(['deleted_at' => now()]);
+            ->delete();
     }
 
     public function sendStream(User $user, string $message, ?string $threadId = null): \Generator
