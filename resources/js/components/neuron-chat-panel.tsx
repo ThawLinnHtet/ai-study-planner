@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Send, Trash2 } from 'lucide-react';
+import { Send, Trash2, Bot } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -132,7 +132,7 @@ export default function NeuronChatPanel({
 
     const openThread = async (nextThreadId: string) => {
         if (nextThreadId === threadId) return;
-        
+
         setLoadingThread(true);
         setError(null);
         try {
@@ -219,198 +219,217 @@ export default function NeuronChatPanel({
     };
 
     return (
-        <Card className={cn('flex h-full flex-col overflow-hidden border-border/60', className)}>
-            <div className="relative overflow-hidden border-b border-border/60">
-                <div className="absolute inset-0 bg-gradient-to-r from-primary/20 via-fuchsia-500/10 to-cyan-500/20" />
-                <div className="relative p-4">
-                    <div className="flex items-start justify-between gap-3">
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-2">
-                                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]" />
-                                <h2 className="text-sm font-semibold tracking-wide">Neuron Chat</h2>
-                                <Badge variant="secondary" className="text-[10px]">
-                                    context-aware
-                                </Badge>
+        <div className={cn('flex h-full flex-col bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-900 dark:via-slate-800 dark:to-slate-900', className)}>
+            {/* Premium Header */}
+            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50 shadow-sm">
+                <div className="flex items-center justify-between p-4">
+                    <div className="flex items-center gap-3">
+                        <div className="relative">
+                            <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full blur-sm opacity-75 animate-pulse" />
+                            <div className="relative h-8 w-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                <Bot className="h-4 w-4 text-white" />
                             </div>
-                            <p className="text-xs text-muted-foreground">{headerSubtitle}</p>
                         </div>
-
-                        <div className="flex items-center gap-2">
-                            <Button
-                                type="button"
-                                size="sm"
-                                variant="secondary"
-                                className="h-8"
-                                onClick={newThread}
-                                disabled={loadingThread || sending}
-                            >
-                                New
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        {threads.slice(0, 6).map((t) => (
-                            <div
-                                key={t.thread_id}
-                                className={cn(
-                                    'group flex items-center gap-1 rounded-full border px-3 py-1 text-left text-xs transition-colors',
-                                    t.thread_id === threadId
-                                        ? 'border-primary/50 bg-primary/10 text-primary'
-                                        : 'border-border/70 bg-background/60 hover:bg-muted',
-                                )}
-                            >
-                                <button
-                                    type="button"
-                                    onClick={() => openThread(t.thread_id)}
-                                    className="flex-1 truncate text-left"
-                                >
-                                    <span className="max-w-[200px] truncate block">
-                                        {t.preview || 'New conversation'}
-                                    </span>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={(e) => {
-                                        e.stopPropagation();
-                                        deleteThread(t.thread_id);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5 hover:text-destructive"
-                                    title="Delete thread"
-                                >
-                                    <Trash2 className="h-3 w-3" />
-                                </button>
+                        <div>
+                            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Neuron</h2>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {variant === 'page' ? 'AI Study Assistant' : 'Your AI Tutor'}
                             </div>
-                        ))}
+                        </div>
                     </div>
                 </div>
+
+                {/* Thread Tabs - Only show if more than 1 thread */}
+                {threads.length > 1 && (
+                    <div className="px-4 pb-3">
+                        <div className="flex gap-2 overflow-x-auto">
+                            {threads.slice(0, 3).map((t) => (
+                                <button
+                                    key={t.thread_id}
+                                    onClick={() => openThread(t.thread_id)}
+                                    className={cn(
+                                        'flex items-center gap-2 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm',
+                                        t.thread_id === threadId
+                                            ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-lg shadow-blue-500/25'
+                                            : 'bg-white/70 dark:bg-slate-700/70 hover:bg-white/90 dark:hover:bg-slate-700/90 text-slate-600 dark:text-slate-300 border border-slate-200/50 dark:border-slate-600/50',
+                                    )}
+                                >
+                                    <span className="max-w-[100px] truncate font-medium">
+                                        {t.preview || 'New chat'}
+                                    </span>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            deleteThread(t.thread_id);
+                                        }}
+                                        className="opacity-70 hover:opacity-100 transition-opacity"
+                                    >
+                                        <Trash2 className="h-3 w-3" />
+                                    </button>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
             </div>
 
-            <div className="flex flex-1 min-h-0 flex-col">
-                <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
-                    {loadingThread ? (
-                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Spinner />
-                            Loading thread…
+            {/* Messages Area */}
+            <div className="flex flex-1 min-h-0">
+                <div ref={scrollRef} className="flex-1 overflow-y-auto">
+                    {loadingThread && (
+                        <div className="flex items-center justify-center h-32">
+                            <div className="flex items-center gap-3 px-4 py-3 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-full shadow-lg">
+                                <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                <span className="text-sm text-slate-600 dark:text-slate-300">Loading...</span>
+                            </div>
                         </div>
-                    ) : null}
+                    )}
 
-                    {!hasAnyMessages && !loadingThread ? (
-                        <div className="space-y-4">
-                            <div className="rounded-xl border border-border/60 bg-gradient-to-br from-primary/10 via-background to-background p-4">
-                                <p className="text-sm font-semibold">Try a quick prompt</p>
-                                <p className="text-xs text-muted-foreground mt-1">
-                                    Neuron will use your plan, XP, streak, and recent sessions.
-                                </p>
-                                <div className="mt-3 flex flex-wrap gap-2">
-                                    {SUGGESTIONS.map((s) => (
-                                        <Button
-                                            key={s}
-                                            type="button"
-                                            size="sm"
-                                            variant="outline"
-                                            className="h-8 rounded-full"
-                                            onClick={() => {
-                                                setDraft(s);
-                                                setTimeout(() => handleSend(), 0);
-                                            }}
-                                            disabled={sending}
-                                        >
-                                            {s}
-                                        </Button>
-                                    ))}
+                    {/* Empty State */}
+                    {!hasAnyMessages && !loadingThread && (
+                        <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                            <div className="relative mb-6">
+                                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl blur-xl opacity-30 animate-pulse" />
+                                <div className="relative bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-xl border border-slate-200/50 dark:border-slate-700/50">
+                                    <div className="h-16 w-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                        <Bot className="h-8 w-8 text-white" />
+                                    </div>
+                                    <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">Ready to help you study</h3>
+                                    <p className="text-sm text-slate-600 dark:text-slate-300 mb-6">
+                                        I'll use your study plan, progress, and recent sessions to give personalized guidance
+                                    </p>
+                                    <div className="flex flex-col gap-2">
+                                        {SUGGESTIONS.slice(0, 3).map((s) => (
+                                            <button
+                                                key={s}
+                                                type="button"
+                                                onClick={() => {
+                                                    setDraft(s);
+                                                    setTimeout(() => handleSend(), 0);
+                                                }}
+                                                disabled={sending}
+                                                className="text-left px-4 py-3 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 hover:from-blue-100 hover:to-purple-100 dark:hover:from-blue-900/30 dark:hover:to-purple-900/30 border border-blue-200/50 dark:border-blue-800/50 text-sm text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+                                            >
+                                                {s}
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
-
-                            <Separator />
-
-                            <div className="text-xs text-muted-foreground">
-                                Tip: Ask "What's my next best move?" for an action plan.
-                            </div>
                         </div>
-                    ) : null}
+                    )}
 
-                    <div className="space-y-3">
+                    {/* Messages */}
+                    <div className="p-6 space-y-6">
                         {messages
                             .filter((m) => m.role !== 'system')
                             .map((m, idx) => (
                                 <motion.div
                                     key={`${m.role}-${idx}-${m.content.slice(0, 16)}`}
-                                    initial={{ opacity: 0, y: 6 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.2 }}
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ duration: 0.4, ease: "easeOut" }}
                                     className={cn(
-                                        'flex',
+                                        'flex gap-4',
                                         m.role === 'user' ? 'justify-end' : 'justify-start',
                                     )}
                                 >
+                                    {m.role === 'assistant' && (
+                                        <div className="flex-shrink-0">
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full blur-sm opacity-75" />
+                                                <div className="relative h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                                    <Bot className="h-5 w-5 text-white" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
                                     <div
                                         className={cn(
-                                            'max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm',
+                                            'max-w-[75%] rounded-2xl px-5 py-4 text-sm leading-relaxed shadow-xl backdrop-blur-sm',
                                             m.role === 'user'
-                                                ? 'bg-primary text-primary-foreground'
-                                                : 'bg-gradient-to-br from-background to-muted border border-border/60',
+                                                ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white shadow-blue-500/25'
+                                                : 'bg-white/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-slate-700/50',
                                         )}
                                     >
                                         <div className="whitespace-pre-wrap break-words">{m.content}</div>
                                     </div>
+                                    {m.role === 'user' && (
+                                        <div className="flex-shrink-0">
+                                            <div className="h-10 w-10 rounded-full bg-gradient-to-br from-slate-600 to-slate-800 flex items-center justify-center shadow-lg">
+                                                <svg className="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                                                </svg>
+                                            </div>
+                                        </div>
+                                    )}
                                 </motion.div>
                             ))}
 
-                        {sending ? (
-                            <div className="flex justify-start">
-                                <div className="max-w-[85%] rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
-                                    <span className="inline-flex items-center gap-2">
-                                        <Spinner className="size-3" />
-                                        Neuron is thinking…
-                                    </span>
+                        {sending && (
+                            <div className="flex gap-4 justify-start">
+                                <div className="flex-shrink-0">
+                                    <div className="relative">
+                                        <div className="absolute inset-0 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full blur-sm opacity-75" />
+                                        <div className="relative h-10 w-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                                            <Bot className="h-5 w-5 text-white" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="bg-white/90 dark:bg-slate-800/90 rounded-2xl px-5 py-4 shadow-xl backdrop-blur-sm border border-slate-200/50 dark:border-slate-700/50">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                        <span className="text-sm text-slate-600 dark:text-slate-300">Thinking...</span>
+                                    </div>
                                 </div>
                             </div>
-                        ) : null}
+                        )}
                     </div>
                 </div>
-
-                <div className="border-t border-border/60 p-3">
-                    {error ? (
-                        <div className="mb-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
-                            {error}
-                        </div>
-                    ) : null}
-
-                    <form
-                        className="flex items-end gap-2"
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            void handleSend();
-                        }}
-                    >
-                        <div className="relative flex-1">
-                            <textarea
-                                value={draft}
-                                onChange={(e) => setDraft(e.target.value)}
-                                placeholder="Ask Neuron…"
-                                rows={variant === 'page' ? 3 : 2}
-                                className={cn(
-                                    'min-h-[44px] w-full resize-none rounded-xl border border-border/60 bg-background px-3 py-2 text-sm shadow-xs outline-none',
-                                    'focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-                                )}
-                                disabled={sending || loadingThread}
-                            />
-                            <div className="pointer-events-none absolute bottom-2 right-2 text-[10px] text-muted-foreground">
-                                {draft.trim().length}/5000
-                            </div>
-                        </div>
-                        <Button
-                            type="submit"
-                            size="icon"
-                            className="h-11 w-11 rounded-xl"
-                            disabled={sending || loadingThread || !draft.trim()}
-                        >
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    </form>
-                </div>
             </div>
-        </Card>
+
+            {/* Premium Input Area */}
+            <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl border-t border-slate-200/50 dark:border-slate-700/50 p-4">
+                {error && (
+                    <div className="mb-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 px-4 py-3">
+                        <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+                    </div>
+                )}
+
+                <form
+                    className="flex gap-3"
+                    onSubmit={(e) => {
+                        e.preventDefault();
+                        void handleSend();
+                    }}
+                >
+                    <div className="relative flex-1">
+                        <input
+                            type="text"
+                            value={draft}
+                            onChange={(e) => setDraft(e.target.value)}
+                            placeholder="Ask anything about your studies..."
+                            className={cn(
+                                'w-full rounded-2xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-5 py-4 pr-16 text-sm outline-none transition-all shadow-sm',
+                                'focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 shadow-lg focus:shadow-xl',
+                                'placeholder:text-slate-500 dark:placeholder:text-slate-400',
+                            )}
+                            disabled={sending || loadingThread}
+                        />
+                        <div className="absolute bottom-4 right-4 text-[10px] text-slate-400">
+                            {draft.trim().length}/5000
+                        </div>
+                    </div>
+                    <Button
+                        type="submit"
+                        size="icon"
+                        className="h-12 w-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 shadow-lg shadow-blue-500/25 border-0 transition-all"
+                        disabled={sending || loadingThread || !draft.trim()}
+                    >
+                        <Send className="h-5 w-5 text-white" />
+                    </Button>
+                </form>
+            </div>
+        </div>
     );
 }

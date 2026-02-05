@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Bot, Sparkles } from 'lucide-react';
@@ -19,20 +19,58 @@ export default function NeuronChatWidget({ className }: Props) {
     const page = usePage<SharedData>();
     const user = page.props.auth?.user;
     const [open, setOpen] = useState(false);
+    const [chatData, setChatData] = useState({
+        threadId: '',
+        threads: [] as NeuronChatThread[],
+        messages: [] as NeuronChatMessage[],
+    });
 
     if (!user) return null;
 
-    const initialThreadId = (page.props as unknown as {
-        threadId?: string;
-    }).threadId;
+    // Initialize chat data from page props
+    useEffect(() => {
+        const initialThreadId = (page.props as unknown as {
+            threadId?: string;
+        }).threadId || '';
 
-    const initialThreads = (page.props as unknown as {
-        threads?: NeuronChatThread[];
-    }).threads;
+        const initialThreads = (page.props as unknown as {
+            threads?: NeuronChatThread[];
+        }).threads || [];
 
-    const initialMessages = (page.props as unknown as {
-        messages?: NeuronChatMessage[];
-    }).messages;
+        const initialMessages = (page.props as unknown as {
+            messages?: NeuronChatMessage[];
+        }).messages || [];
+
+        setChatData({
+            threadId: initialThreadId,
+            threads: initialThreads,
+            messages: initialMessages,
+        });
+    }, [page.props]);
+
+    // Refresh chat data when widget opens
+    useEffect(() => {
+        if (open) {
+            // Fetch latest chat data when opening
+            fetch('/ai-tutor/threads')
+                .then(res => res.json())
+                .then(data => {
+                    const latestThread = data.threads?.[0];
+                    if (latestThread) {
+                        return fetch(`/ai-tutor/threads/${latestThread.thread_id}`)
+                            .then(res => res.json())
+                            .then(messageData => {
+                                setChatData({
+                                    threadId: latestThread.thread_id,
+                                    threads: data.threads || [],
+                                    messages: messageData.messages || [],
+                                });
+                            });
+                    }
+                })
+                .catch(console.error);
+        }
+    }, [open]);
 
     return (
         <div className={cn('fixed bottom-5 right-5 z-40', className)}>
@@ -71,9 +109,9 @@ export default function NeuronChatWidget({ className }: Props) {
                     </SheetHeader>
                     <div className="h-dvh max-h-dvh">
                         <NeuronChatPanel
-                            initialThreadId={initialThreadId || ''}
-                            initialThreads={initialThreads || []}
-                            initialMessages={initialMessages || []}
+                            initialThreadId={chatData.threadId}
+                            initialThreads={chatData.threads}
+                            initialMessages={chatData.messages}
                             variant="widget"
                             className="h-full rounded-none border-0"
                         />
