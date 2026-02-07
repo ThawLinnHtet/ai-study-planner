@@ -189,21 +189,44 @@ class StudyPlanController extends Controller
             'duration_minutes' => ['required', 'integer'],
             'started_at' => ['required', 'date'],
             'status' => ['required', 'string', 'in:completed,pending'],
+            'quiz_result_id' => ['nullable', 'integer', 'exists:quiz_results,id'],
         ]);
 
         $user = $request->user();
 
         if ($validated['status'] === 'completed') {
-            $user->studySessions()->create([
-                'subject_id' => null, // We could look this up by name if needed
+            // Require quiz result to mark as completed
+            if (empty($validated['quiz_result_id'])) {
+                return back()->withErrors(['quiz' => 'Please complete the quiz first.']);
+            }
+
+            // Verify quiz result belongs to user and is passed
+            $quizResult = $user->quizResults()
+                ->where('id', $validated['quiz_result_id'])
+                ->first();
+
+            if (!$quizResult || $quizResult->percentage < 80) {
+                return back()->withErrors(['quiz' => 'You need to pass the quiz (80%+) to complete this session.']);
+            }
+
+            $session = $user->studySessions()->create([
+                'subject_id' => null,
                 'study_plan_id' => $user->studyPlans()->where('status', 'active')->value('id'),
                 'started_at' => $validated['started_at'],
                 'duration_minutes' => $validated['duration_minutes'],
                 'type' => 'study',
                 'status' => 'completed',
                 'notes' => "Completed session: {$validated['topic']}",
-                'meta' => ['subject_name' => $validated['subject'], 'topic_name' => $validated['topic']],
+                'meta' => [
+                    'subject_name' => $validated['subject'],
+                    'topic_name' => $validated['topic'],
+                    'quiz_result_id' => $quizResult->id,
+                    'quiz_percentage' => $quizResult->percentage,
+                ],
             ]);
+
+            // Link quiz result to study session
+            $quizResult->update(['study_session_id' => $session->id]);
         } else {
             // Un-toggle: find and delete the existing record for this day/subject/topic
             $user->studySessions()

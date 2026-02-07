@@ -37,7 +37,7 @@ import {
     Layers,
     Info
 } from 'lucide-react';
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -48,6 +48,7 @@ import { toast } from '@/hooks/use-toast';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
+import QuizModal from '@/components/quiz-modal';
 
 interface Session {
     subject: string;
@@ -174,8 +175,13 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
         topic: '',
         duration_minutes: 0,
         started_at: '',
-        status: 'completed' as 'completed' | 'pending'
+        status: 'completed' as 'completed' | 'pending',
+        quiz_result_id: null as number | null,
     });
+
+    // Quiz modal state
+    const [quizOpen, setQuizOpen] = useState(false);
+    const [quizSession, setQuizSession] = useState<{ subject: string; topic: string; date: Date; duration_minutes: number } | null>(null);
 
     const rebalanceForm = useForm({});
 
@@ -206,18 +212,60 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
     const toggleSession = (date: Date, session: Session) => {
         const completed = isCompleted(date, session.subject, session.topic);
 
+        if (completed) {
+            // Un-toggle: directly remove completion
+            form.setData({
+                subject: getSubjectDisplay(session),
+                topic: getTopicDisplay(session),
+                duration_minutes: session.duration_minutes ?? 60,
+                started_at: format(date, "yyyy-MM-dd HH:mm:ss"),
+                status: 'pending',
+                quiz_result_id: null,
+            });
+            form.post(route('study-plan.toggle-session'), {
+                preserveScroll: true
+            });
+        } else {
+            // Open quiz modal before completing
+            setQuizSession({
+                subject: getSubjectDisplay(session),
+                topic: getTopicDisplay(session),
+                date,
+                duration_minutes: session.duration_minutes ?? 60,
+            });
+            setQuizOpen(true);
+        }
+    };
+
+    // Track pending quiz completion
+    const [pendingQuizResultId, setPendingQuizResultId] = useState<number | null>(null);
+
+    const handleQuizPassed = useCallback((resultId: number) => {
+        if (!quizSession) return;
+        setQuizOpen(false);
+
         form.setData({
-            subject: getSubjectDisplay(session),
-            topic: getTopicDisplay(session),
-            duration_minutes: session.duration_minutes ?? 60,
-            started_at: format(date, "yyyy-MM-dd HH:mm:ss"),
-            status: completed ? 'pending' : 'completed'
+            subject: quizSession.subject,
+            topic: quizSession.topic,
+            duration_minutes: quizSession.duration_minutes,
+            started_at: format(quizSession.date, "yyyy-MM-dd HH:mm:ss"),
+            status: 'completed',
+            quiz_result_id: resultId,
         });
 
-        form.post(route('study-plan.toggle-session'), {
-            preserveScroll: true
-        });
-    };
+        setPendingQuizResultId(resultId);
+        setQuizSession(null);
+    }, [quizSession, form]);
+
+    // Post form after quiz_result_id is set in form data
+    useEffect(() => {
+        if (pendingQuizResultId !== null && form.data.quiz_result_id === pendingQuizResultId) {
+            form.post(route('study-plan.toggle-session'), {
+                preserveScroll: true,
+            });
+            setPendingQuizResultId(null);
+        }
+    }, [form.data.quiz_result_id, pendingQuizResultId]);
 
     // Calculate days until exam for a subject
     const getExamInfo = (subject: string): {
@@ -1073,6 +1121,20 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                     </div>
                 </div>
             </div>
+
+            {/* Quiz Modal */}
+            {quizSession && (
+                <QuizModal
+                    open={quizOpen}
+                    onClose={() => {
+                        setQuizOpen(false);
+                        setQuizSession(null);
+                    }}
+                    onPassed={handleQuizPassed}
+                    subject={quizSession.subject}
+                    topic={quizSession.topic}
+                />
+            )}
 
         </AppLayout>
     );

@@ -47,6 +47,13 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
         return Inertia::render('quizzes');
     })->name('quizzes');
 
+    Route::prefix('quiz')->group(function () {
+        Route::post('generate', [\App\Http\Controllers\QuizController::class, 'generate'])
+            ->name('quiz.generate');
+        Route::post('submit', [\App\Http\Controllers\QuizController::class, 'submit'])
+            ->name('quiz.submit');
+    });
+
     Route::get('progress', [\App\Http\Controllers\ProgressController::class, 'index'])
         ->name('progress');
 });
