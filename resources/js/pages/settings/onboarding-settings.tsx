@@ -222,6 +222,10 @@ export default function OnboardingSettings({ user }: Props) {
         // Use router.visit for direct submission with custom data
         router.put('/settings/onboarding', submitData, {
             onSuccess: () => {
+                // Show toast after successful save, before redirect
+                if (shouldRegenerate) {
+                    toast.success('Study plan updated successfully!');
+                }
                 // Reset the flag after successful submission
                 form.setData('regenerate_plan', false);
             },

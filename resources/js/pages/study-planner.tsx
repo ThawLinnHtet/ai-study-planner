@@ -22,6 +22,7 @@ import {
     ChevronRight,
     RefreshCw,
     AlertCircle,
+    AlertTriangle,
     BookOpen,
     Flame,
     Sparkles,
@@ -33,7 +34,8 @@ import {
     Crown,
     Calendar,
     ChevronDown,
-    Layers
+    Layers,
+    Info
 } from 'lucide-react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import Heading from '@/components/heading';
@@ -218,18 +220,64 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
     };
 
     // Calculate days until exam for a subject
-    const getExamInfo = (subject: string): { daysUntil: number | null; isNear: boolean } => {
+    const getExamInfo = (subject: string): {
+        hasExam: boolean;
+        daysUntil: number | null;
+        label: string;
+        variant: 'exam-urgent' | 'exam-soon' | 'exam-planned' | 'regular';
+    } => {
         const examDate = examDates[subject];
-        if (!examDate) return { daysUntil: null, isNear: false };
+
+        if (!examDate) {
+            return {
+                hasExam: false,
+                daysUntil: null,
+                label: 'Regular',
+                variant: 'regular'
+            };
+        }
 
         const today = new Date();
         const exam = new Date(examDate);
         const diffTime = exam.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
+        // Past exam - treat as regular
+        if (diffDays <= 0) {
+            return {
+                hasExam: false,
+                daysUntil: null,
+                label: 'Regular',
+                variant: 'regular'
+            };
+        }
+
+        // 1-3 days: urgent
+        if (diffDays <= 3) {
+            return {
+                hasExam: true,
+                daysUntil: diffDays,
+                label: `Exam Prep - ${diffDays} days`,
+                variant: 'exam-urgent'
+            };
+        }
+
+        // 4-14 days: soon
+        if (diffDays <= 14) {
+            return {
+                hasExam: true,
+                daysUntil: diffDays,
+                label: `Exam Prep - ${diffDays} days`,
+                variant: 'exam-soon'
+            };
+        }
+
+        // 15+ days: planned
         return {
+            hasExam: true,
             daysUntil: diffDays,
-            isNear: diffDays > 0 && diffDays <= 14
+            label: 'Exam Prep',
+            variant: 'exam-planned'
         };
     };
 
@@ -872,20 +920,32 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                                                 </h4>
                                                                 {(() => {
                                                                     const examInfo = getExamInfo(subj);
-                                                                    if (examInfo.isNear) {
-                                                                        return (
-                                                                            <div className="flex items-center gap-1.5 text-sm font-medium">
-                                                                                <Badge variant="destructive" className="animate-pulse">
-                                                                                    <Target className="w-3 h-3 mr-1" />
-                                                                                    Exam in {examInfo.daysUntil} days
+                                                                    return (
+                                                                        <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                                                                            {examInfo.hasExam ? (
+                                                                                <>
+                                                                                    <Badge className={examInfo.variant === 'exam-urgent' ? 'bg-rose-500 text-white border-rose-500' : examInfo.variant === 'exam-soon' ? 'bg-orange-500 text-white border-orange-500' : 'bg-blue-500 text-white border-blue-500'}>
+                                                                                        Exam Prep
+                                                                                    </Badge>
+                                                                                    {examInfo.daysUntil && examInfo.daysUntil <= 14 && (
+                                                                                        <span className={examInfo.variant === 'exam-urgent' ? 'text-rose-500 font-semibold ml-1 flex items-center gap-1' : examInfo.variant === 'exam-soon' ? 'text-orange-500 ml-1 flex items-center gap-1' : 'text-blue-500 ml-1 flex items-center gap-1'}>
+                                                                                            {examInfo.variant === 'exam-urgent' && <Flame className="w-3.5 h-3.5" />}
+                                                                                            {examInfo.variant === 'exam-soon' && <AlertTriangle className="w-3.5 h-3.5" />}
+                                                                                            {examInfo.variant === 'exam-planned' && <Info className="w-3.5 h-3.5" />}
+                                                                                            Exam in {examInfo.daysUntil} days
+                                                                                        </span>
+                                                                                    )}
+                                                                                </>
+                                                                            ) : (
+                                                                                <Badge variant="outline" className="text-muted-foreground">
+                                                                                    Regular Study
                                                                                 </Badge>
-                                                                            </div>
-                                                                        );
-                                                                    }
-                                                                    return null;
+                                                                            )}
+                                                                        </div>
+                                                                    );
                                                                 })()}
                                                                 {session.focus_level === 'high' && (
-                                                                    <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium animate-pulse">
+                                                                    <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium mt-1">
                                                                         <Sparkles className="w-3.5 h-3.5" />
                                                                         <span>Deep Focus Required</span>
                                                                     </div>
@@ -914,7 +974,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                                                     {session.key_topics.map((topic, topicIdx) => (
                                                                         <span
                                                                             key={`${subj}-topic-${topicIdx}`}
-                                                                            className="inline-flex items-center px-2.5 py-1 rounded-full text-base font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors duration-200"
+                                                                            className="inline-flex items-center px-2.5 py-1 rounded-full text-base bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors duration-200"
                                                                         >
                                                                             {topic}
                                                                         </span>
