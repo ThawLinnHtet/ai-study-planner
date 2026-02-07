@@ -219,11 +219,6 @@ export default function OnboardingSettings({ user }: Props) {
             regenerate_plan: shouldRegenerate
         };
 
-        // Show toast if no changes detected
-        if (!shouldRegenerate) {
-            toast.info('No changes detected. Preferences saved without regenerating schedule.');
-        }
-
         // Use router.visit for direct submission with custom data
         router.put('/settings/onboarding', submitData, {
             onSuccess: () => {

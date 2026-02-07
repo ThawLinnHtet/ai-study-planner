@@ -159,19 +159,16 @@ class OnboardingSettingsController extends Controller
 
                 session()->flash('success', 'Your study preferences have been updated and a new study plan has been generated with your latest preferences!');
 
-                return redirect()->route('onboarding-settings.edit');
+                return redirect()->route('study-planner');
             } catch (\Exception $e) {
                 \Log::error('❌ Failed to generate study plan: '.$e->getMessage());
                 session()->flash('success', 'Your study preferences have been updated! However, we encountered an error generating a new study plan: '.$e->getMessage());
 
                 return redirect()->route('onboarding-settings.edit');
             }
-        } else {
-            \Log::info('No plan regeneration requested');
         }
 
-        session()->flash('success', 'Your study preferences have been updated successfully!');
-
+        // No regeneration requested - preferences saved without changes (silent)
         return redirect()->route('onboarding-settings.edit');
     }
 
