@@ -98,7 +98,6 @@ class CleanPlannerAgent extends Agent
         $difficulties = json_encode($data['subject_difficulties'] ?? []);
         $peak = $data['productivity_peak'] ?? 'morning';
         $hours = $data['daily_study_hours'] ?? 2;
-        $styles = json_encode($data['learning_style'] ?? []);
         $goal = $data['study_goal'] ?? '';
         $sessionDurations = json_encode($data['subject_session_durations'] ?? []);
 
@@ -114,7 +113,6 @@ Generate a weekly study plan for a student with the following profile:
 - Preferred Session Durations (min-max minutes per subject): {$sessionDurations}
 - Target Daily Hours: {$hours}
 - Peak Energy Time: {$peak}
-- Learning Preferences: {$styles}
 
 FOCUS CAPACITY CONSTRAINTS:
 - Maximum sustainable high-focus time: 4 hours per day
@@ -154,10 +152,9 @@ ENHANCED UX & QUALITY REQUIREMENTS:
 14. NO REPEATS: Never repeat the same subject on the same day
 15. TOPIC PROGRESSION: Topics should build logically from basic to advanced
 16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
-17. LEARNING STYLE: Match topics to learning style ({$styles}) - visual learners get diagrams/concepts, reading gets text-heavy topics
-18. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
-19. SESSION DURATION: If preferred session durations are provided for a subject, use those min-max ranges. Otherwise, keep sessions between 30-90 minutes, with longer sessions for difficult subjects
-20. BREAKS: Build in natural break points between different subjects and focus levels
+17. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
+18. SESSION DURATION: If preferred session durations are provided for a subject, use those min-max ranges. Otherwise, keep sessions between 30-90 minutes, with longer sessions for difficult subjects
+19. BREAKS: Build in natural break points between different subjects and focus levels
 
 FOCAPACITY-AWARE SCHEDULING STRATEGY:
 - If {$hours} ≤ 4: Use high-focus sessions during peak time only
@@ -230,7 +227,6 @@ PROMPT;
         $difficulties = json_encode($data['subject_difficulties'] ?? []);
         $peak = $data['productivity_peak'] ?? 'morning';
         $hours = $data['daily_study_hours'] ?? 2;
-        $styles = json_encode($data['learning_style'] ?? []);
         $sessionDurations = json_encode($data['subject_session_durations'] ?? []);
         $weekNumber = (int) ($data['week_number'] ?? 2);
         $prevWeekNum = $weekNumber - 1;
@@ -250,7 +246,6 @@ Generate the NEXT weekly study schedule. This is WEEK {$weekNumber} (starting {$
 - Preferred Session Durations (min-max minutes per subject): {$sessionDurations}
 - Target Daily Hours: {$hours}
 - Peak Energy Time: {$peak}
-- Learning Preferences: {$styles}
 
 PREVIOUS WEEK (Week {$prevWeekNum}) COVERED:
 {$previousWeekSummary}

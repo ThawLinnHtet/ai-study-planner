@@ -20,7 +20,6 @@ type OnboardingData = {
     subjects: string[];
     exam_dates: Record<string, string | null>;
     daily_study_hours: number | null;
-    learning_style: string | null;
     study_goal: string | null;
     timezone: string | null;
     productivity_peak?: string | null;
@@ -40,7 +39,6 @@ type WizardForm = {
     exam_dates: Record<string, string | null>;
     daily_study_hours: number | '';
     productivity_peak: string;
-    learning_style: string[];
     subject_difficulties: Record<string, number>;
     subject_session_durations: Record<string, { min: number; max: number }>;
     study_goal: string;
@@ -128,9 +126,6 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         exam_dates: onboarding.exam_dates ?? {},
         daily_study_hours: onboarding.daily_study_hours ?? 2,
         productivity_peak: onboarding.productivity_peak ?? 'morning',
-        learning_style: Array.isArray(onboarding.learning_style)
-            ? onboarding.learning_style
-            : (onboarding.learning_style ? [onboarding.learning_style] : []),
         subject_difficulties: onboarding.subject_difficulties ?? {},
         subject_session_durations: onboarding.subject_session_durations ?? {},
         study_goal: onboarding.study_goal ?? '',
@@ -320,16 +315,6 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         });
     }
 
-    function toggleLearningStyle(style: string) {
-        const exists = form.data.learning_style.includes(style);
-
-        form.setData(
-            'learning_style',
-            exists
-                ? form.data.learning_style.filter((s) => s !== style)
-                : [...form.data.learning_style, style],
-        );
-    }
 
     return (
         <>
@@ -867,115 +852,55 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                             <div className="space-y-6">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2">
-                                                        <Brain className="size-5" />
+                                                        <Target className="size-5" />
                                                         <h3 className="text-lg font-semibold">
-                                                            Learning style & goal
+                                                            Study goal
                                                         </h3>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        We tailor study sessions and reminders based on how you learn.
+                                                        What's your main objective? This helps set the right study intensity.
                                                     </p>
                                                 </div>
 
-                                                <div className="space-y-8">
-                                                    <div className="space-y-4">
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="text-sm font-medium">Learning style</div>
-                                                            <div className="text-[10px] uppercase font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">
-                                                                AI Personalization
-                                                            </div>
-                                                        </div>
-                                                        <div className="grid gap-3 md:grid-cols-2">
-                                                            <ChoiceCard
-                                                                title="Visual"
-                                                                description="Diagrams, videos, color coding"
-                                                                selected={form.data.learning_style.includes('visual')}
-                                                                icon={<Eye className="size-5" />}
-                                                                onClick={() => toggleLearningStyle('visual')}
-                                                            />
-                                                            <ChoiceCard
-                                                                title="Auditory"
-                                                                description="Lectures, discussion, podcasts"
-                                                                selected={form.data.learning_style.includes('auditory')}
-                                                                icon={<Headphones className="size-5" />}
-                                                                onClick={() => toggleLearningStyle('auditory')}
-                                                            />
-                                                            <ChoiceCard
-                                                                title="Reading/Writing"
-                                                                description="Notes, summaries, flashcards"
-                                                                selected={form.data.learning_style.includes('reading')}
-                                                                icon={<BookOpen className="size-5" />}
-                                                                onClick={() => toggleLearningStyle('reading')}
-                                                            />
-                                                            <ChoiceCard
-                                                                title="Kinesthetic"
-                                                                description="Practice problems, hands-on"
-                                                                selected={form.data.learning_style.includes('kinesthetic')}
-                                                                icon={<Hand className="size-5" />}
-                                                                onClick={() => toggleLearningStyle('kinesthetic')}
-                                                            />
-                                                        </div>
-                                                        <p className="text-xs text-muted-foreground flex items-center gap-1.5 px-1">
-                                                            <Brain className="size-3 text-primary" />
-                                                            Neuron AI will tailor study techniques to your style.
-                                                        </p>
-                                                        <InputError message={form.errors.learning_style} />
+                                                <div className="space-y-4">
+                                                    <div className="grid gap-3 md:grid-cols-2">
+                                                        <ChoiceCard
+                                                            title="Build strong foundation"
+                                                            description="Focus on core concepts and steady progress"
+                                                            selected={form.data.study_goal === 'Build strong foundation'}
+                                                            icon={<CheckCircle2 className="size-5" />}
+                                                            onClick={() => form.setData('study_goal', 'Build strong foundation')}
+                                                        />
+                                                        <ChoiceCard
+                                                            title="Achieve top performance"
+                                                            description="Deep understanding with intensive practice"
+                                                            selected={form.data.study_goal === 'Achieve top performance'}
+                                                            icon={<Target className="size-5" />}
+                                                            onClick={() => form.setData('study_goal', 'Achieve top performance')}
+                                                        />
                                                     </div>
+                                                    <InputError message={form.errors.study_goal} />
+                                                </div>
 
-                                                    <div className="space-y-4">
-                                                        <div className="text-sm font-medium">Study goal</div>
-                                                        <div className="grid gap-3 md:grid-cols-2">
-                                                            <ChoiceCard
-                                                                title="Pass confidently"
-                                                                description="Focus on fundamentals and consistency"
-                                                                selected={form.data.study_goal === 'Pass confidently'}
-                                                                icon={<CheckCircle2 className="size-5" />}
-                                                                onClick={() => form.setData('study_goal', 'Pass confidently')}
-                                                            />
-                                                            <ChoiceCard
-                                                                title="Get a top score"
-                                                                description="More practice + higher intensity"
-                                                                selected={form.data.study_goal === 'Get a top score'}
-                                                                icon={<Target className="size-5" />}
-                                                                onClick={() => form.setData('study_goal', 'Get a top score')}
-                                                            />
-                                                        </div>
-
-                                                        <div className="space-y-2 pt-2">
-                                                            <Label htmlFor="study_goal_custom" className="text-xs text-muted-foreground">
-                                                                Or set a custom specific goal
+                                                <div className="pt-4 border-t border-border">
+                                                    <div className="grid gap-4 md:grid-cols-2 items-center">
+                                                        <div className="space-y-2">
+                                                            <Label htmlFor="timezone" className="text-sm font-medium">
+                                                                Timezone
                                                             </Label>
                                                             <Input
-                                                                id="study_goal_custom"
-                                                                value={form.data.study_goal}
-                                                                onChange={(e) => form.setData('study_goal', e.target.value)}
-                                                                placeholder="e.g. Finish syllabus 2 weeks before exam"
-                                                                className="bg-muted/50 focus:bg-background transition-colors"
+                                                                id="timezone"
+                                                                value={form.data.timezone}
+                                                                onChange={(e) => form.setData('timezone', e.target.value)}
+                                                                placeholder="Asia/Yangon"
+                                                                className="bg-muted/30"
                                                             />
-                                                            <InputError message={form.errors.study_goal} />
+                                                            <InputError message={form.errors.timezone} />
                                                         </div>
-                                                    </div>
-
-                                                    <div className="pt-4 border-t border-border">
-                                                        <div className="grid gap-4 md:grid-cols-2 items-center">
-                                                            <div className="space-y-2">
-                                                                <Label htmlFor="timezone" className="text-sm font-medium">
-                                                                    Timezone
-                                                                </Label>
-                                                                <Input
-                                                                    id="timezone"
-                                                                    value={form.data.timezone}
-                                                                    onChange={(e) => form.setData('timezone', e.target.value)}
-                                                                    placeholder="Asia/Yangon"
-                                                                    className="bg-muted/30"
-                                                                />
-                                                                <InputError message={form.errors.timezone} />
-                                                            </div>
-                                                            <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex gap-3 text-xs">
-                                                                <Compass className="size-4 text-orange-500 shrink-0" />
-                                                                <div className="text-muted-foreground leading-relaxed">
-                                                                    Timezone lets us schedule reminders at the right local time to avoid burnout.
-                                                                </div>
+                                                        <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex gap-3 text-xs">
+                                                            <Compass className="size-4 text-orange-500 shrink-0" />
+                                                            <div className="text-muted-foreground leading-relaxed">
+                                                                Timezone lets us schedule reminders at the right local time to avoid burnout.
                                                             </div>
                                                         </div>
                                                     </div>
@@ -1038,13 +963,6 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                     <span className="text-muted-foreground">
                                                                         ({form.data.productivity_peak.charAt(0).toUpperCase() + form.data.productivity_peak.slice(1)} focus)
                                                                     </span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Learning style:
-                                                                    </span>{' '}
-                                                                    {form.data.learning_style.join(', ') ||
-                                                                        '—'}
                                                                 </div>
                                                                 <div>
                                                                     <span className="font-medium text-foreground">
@@ -1139,7 +1057,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                         </div>
                     </div>
                 </div>
-            </OnboardingLayout>
+            </OnboardingLayout >
         </>
     );
 }

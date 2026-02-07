@@ -38,7 +38,6 @@ class OnboardingSettingsController extends Controller
                 'subject_session_durations' => $user->subject_session_durations ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
                 'productivity_peak' => $user->productivity_peak,
-                'learning_style' => $user->learning_style ?? [],
                 'study_goal' => $user->study_goal,
                 'timezone' => $user->timezone,
                 'onboarding_completed' => $user->onboarding_completed,
@@ -74,8 +73,6 @@ class OnboardingSettingsController extends Controller
             'subject_session_durations.*.max' => ['nullable', 'integer', 'min:15', 'max:120'],
             'daily_study_hours' => ['required', 'integer', 'min:1', 'max:6'],
             'productivity_peak' => ['required', 'string', 'in:morning,afternoon,evening,night'],
-            'learning_style' => ['required', 'array', 'min:1'],
-            'learning_style.*' => ['required', 'string', 'in:visual,auditory,reading,kinesthetic'],
             'study_goal' => ['required', 'string', 'min:3', 'max:255'],
             'timezone' => ['nullable', 'string', 'timezone:all'],
             'regenerate_plan' => ['nullable', 'boolean'],
@@ -84,7 +81,6 @@ class OnboardingSettingsController extends Controller
             'daily_study_hours.min' => 'Study time must be at least 1 hour per day.',
             'daily_study_hours.max' => 'Study time cannot exceed 6 hours per day for optimal learning.',
             'productivity_peak.required' => 'Please select your peak productivity time.',
-            'learning_style.required' => 'Please select at least one learning style.',
         ]);
 
         // Validate study hours against focus capacity
@@ -118,7 +114,6 @@ class OnboardingSettingsController extends Controller
             'subject_session_durations' => $validated['subject_session_durations'] ?? [],
             'daily_study_hours' => $validated['daily_study_hours'],
             'productivity_peak' => $validated['productivity_peak'],
-            'learning_style' => $validated['learning_style'],
             'study_goal' => $validated['study_goal'],
             'timezone' => $validated['timezone'],
         ]);
@@ -144,7 +139,6 @@ class OnboardingSettingsController extends Controller
                     'subject_session_durations' => $user->subject_session_durations ?? [],
                     'daily_study_hours' => $user->daily_study_hours,
                     'productivity_peak' => $user->productivity_peak,
-                    'learning_style' => $user->learning_style,
                     'study_goal' => $user->study_goal,
                     'timezone' => $user->timezone,
                 ];

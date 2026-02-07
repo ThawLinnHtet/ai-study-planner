@@ -44,7 +44,6 @@ class OnboardingController extends Controller
                 'subject_session_durations' => $user->subject_session_durations ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
                 'productivity_peak' => $user->productivity_peak,
-                'learning_style' => $user->learning_style,
                 'study_goal' => $user->study_goal,
                 'timezone' => $user->timezone,
             ],
@@ -239,8 +238,6 @@ class OnboardingController extends Controller
 
         if ($step === 5) {
             $data = $request->validate([
-                'learning_style' => ['required', 'array', 'min:1'],
-                'learning_style.*' => ['string', 'in:visual,auditory,reading,kinesthetic'],
                 'study_goal' => ['required', 'string', 'min:3', 'max:255'],
                 'timezone' => ['nullable', 'string', 'timezone:all'],
             ]);
@@ -251,7 +248,6 @@ class OnboardingController extends Controller
             }
 
             $user->forceFill([
-                'learning_style' => $data['learning_style'],
                 'study_goal' => $data['study_goal'],
                 'timezone' => $timezone,
                 // Preserve existing subjects, difficulties, and exam dates

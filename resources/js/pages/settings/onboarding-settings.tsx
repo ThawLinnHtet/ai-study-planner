@@ -11,7 +11,8 @@ import {
     Sunset,
     Moon,
     CalendarDays,
-    Timer
+    Timer,
+    Target
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from '@/hooks/use-toast';
@@ -49,7 +50,6 @@ interface User {
     subject_session_durations: Record<string, { min: number; max: number }>;
     daily_study_hours: number;
     productivity_peak: string;
-    learning_style: string[];
     study_goal: string;
     timezone: string;
     onboarding_completed: boolean;
@@ -97,7 +97,6 @@ export default function OnboardingSettings({ user }: Props) {
         subject_session_durations: user.subject_session_durations || {},
         daily_study_hours: user.daily_study_hours || 2,
         productivity_peak: user.productivity_peak || 'morning',
-        learning_style: user.learning_style || [],
         study_goal: user.study_goal || '',
         timezone: user.timezone || '',
     });
@@ -130,7 +129,6 @@ export default function OnboardingSettings({ user }: Props) {
         // Check simple values
         if (current.daily_study_hours !== original.daily_study_hours) return true;
         if (current.productivity_peak !== original.productivity_peak) return true;
-        if (JSON.stringify(current.learning_style.sort()) !== JSON.stringify(original.learning_style.sort())) return true;
         if (current.study_goal !== original.study_goal) return true;
         if (current.timezone !== original.timezone) return true;
 
@@ -163,7 +161,6 @@ export default function OnboardingSettings({ user }: Props) {
         subject_session_durations: user.subject_session_durations || {},
         daily_study_hours: user.daily_study_hours || 2,
         productivity_peak: user.productivity_peak || 'morning',
-        learning_style: user.learning_style || [],
         study_goal: user.study_goal || '',
         timezone: user.timezone || '',
         regenerate_plan: false,
@@ -605,64 +602,51 @@ export default function OnboardingSettings({ user }: Props) {
                         </CardContent>
                     </Card>
 
-                    {/* Learning Preferences Section */}
+                    {/* Study Goal Section */}
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
-                                <UserIcon className="w-5 h-5" />
-                                Learning Preferences
+                                <Target className="w-5 h-5" />
+                                Study Goal
                             </CardTitle>
                             <CardDescription>
-                                Customize your learning style and goals
+                                What's your main objective? This helps set the right study intensity.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <div>
-                                    <Label className="text-sm font-medium mb-3 block">Learning Style</Label>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="space-y-4">
+                                    <Label className="text-sm font-medium">Choose Your Goal</Label>
                                     <div className="space-y-2">
                                         {[
-                                            { value: 'visual', label: 'Visual' },
-                                            { value: 'auditory', label: 'Auditory' },
-                                            { value: 'reading', label: 'Reading/Writing' },
-                                            { value: 'kinesthetic', label: 'Kinesthetic' }
-                                        ].map((style) => (
-                                            <div key={style.value} className="flex items-center space-x-2">
+                                            { value: 'Build strong foundation', label: 'Build strong foundation', desc: 'Focus on core concepts and steady progress' },
+                                            { value: 'Achieve top performance', label: 'Achieve top performance', desc: 'Deep understanding with intensive practice' }
+                                        ].map((goal) => (
+                                            <div key={goal.value} className="flex items-center space-x-2">
                                                 <Checkbox
-                                                    id={style.value}
-                                                    checked={form.data.learning_style?.includes(style.value)}
+                                                    id={goal.value}
+                                                    checked={form.data.study_goal === goal.value}
                                                     onCheckedChange={(checked) => {
-                                                        const currentStyles = form.data.learning_style || [];
                                                         if (checked) {
-                                                            form.setData('learning_style', [...currentStyles, style.value]);
+                                                            form.setData('study_goal', goal.value);
                                                         } else {
-                                                            form.setData('learning_style', currentStyles.filter((s: string) => s !== style.value));
+                                                            form.setData('study_goal', '');
                                                         }
                                                     }}
                                                 />
-                                                <Label htmlFor={style.value} className="text-sm">{style.label}</Label>
+                                                <div className="flex-1">
+                                                    <Label htmlFor={goal.value} className="text-sm font-medium">{goal.label}</Label>
+                                                    <p className="text-xs text-muted-foreground">{goal.desc}</p>
+                                                </div>
                                             </div>
                                         ))}
                                     </div>
-                                    {form.errors.learning_style && (
-                                        <p className="text-sm text-destructive">{form.errors.learning_style}</p>
+                                    {form.errors.study_goal && (
+                                        <p className="text-sm text-destructive">{form.errors.study_goal}</p>
                                     )}
                                 </div>
 
                                 <div className="space-y-4">
-                                    <div>
-                                        <Label htmlFor="study_goal">Study Goal</Label>
-                                        <Input
-                                            id="study_goal"
-                                            value={form.data.study_goal}
-                                            onChange={(e) => form.setData('study_goal', e.target.value)}
-                                            placeholder="e.g., Prepare for final exams, Learn new skills"
-                                        />
-                                        {form.errors.study_goal && (
-                                            <p className="text-sm text-destructive">{form.errors.study_goal}</p>
-                                        )}
-                                    </div>
-
                                     <div>
                                         <Label htmlFor="timezone">Timezone</Label>
                                         <Input
