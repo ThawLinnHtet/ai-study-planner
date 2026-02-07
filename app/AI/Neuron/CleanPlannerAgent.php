@@ -100,6 +100,7 @@ class CleanPlannerAgent extends Agent
         $hours = $data['daily_study_hours'] ?? 2;
         $styles = json_encode($data['learning_style'] ?? []);
         $goal = $data['study_goal'] ?? '';
+        $sessionDurations = json_encode($data['subject_session_durations'] ?? []);
 
         $currentDay = $data['current_day'] ?? date('l');
         $currentDate = $data['current_date'] ?? date('Y-m-d');
@@ -110,6 +111,7 @@ Generate a weekly study plan for a student with the following profile:
 - Subjects: {$subjects}
 - Subject Difficulties (1=Easy, 3=Hard): {$difficulties}
 - Exam Deadlines: {$examDates}
+- Preferred Session Durations (min-max minutes per subject): {$sessionDurations}
 - Target Daily Hours: {$hours}
 - Peak Energy Time: {$peak}
 - Learning Preferences: {$styles}
@@ -154,7 +156,7 @@ ENHANCED UX & QUALITY REQUIREMENTS:
 16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
 17. LEARNING STYLE: Match topics to learning style ({$styles}) - visual learners get diagrams/concepts, reading gets text-heavy topics
 18. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
-19. SESSION DURATION: Keep sessions between 30-90 minutes, with longer sessions for difficult subjects
+19. SESSION DURATION: If preferred session durations are provided for a subject, use those min-max ranges. Otherwise, keep sessions between 30-90 minutes, with longer sessions for difficult subjects
 20. BREAKS: Build in natural break points between different subjects and focus levels
 
 FOCAPACITY-AWARE SCHEDULING STRATEGY:
@@ -229,6 +231,7 @@ PROMPT;
         $peak = $data['productivity_peak'] ?? 'morning';
         $hours = $data['daily_study_hours'] ?? 2;
         $styles = json_encode($data['learning_style'] ?? []);
+        $sessionDurations = json_encode($data['subject_session_durations'] ?? []);
         $weekNumber = (int) ($data['week_number'] ?? 2);
         $prevWeekNum = $weekNumber - 1;
         $weekStartDate = $data['week_start_date'] ?? date('Y-m-d');
@@ -244,6 +247,7 @@ Generate the NEXT weekly study schedule. This is WEEK {$weekNumber} (starting {$
 - Subjects: {$subjects}
 - Subject Difficulties (1=Easy, 3=Hard): {$difficulties}
 - Exam Deadlines: {$examDates}
+- Preferred Session Durations (min-max minutes per subject): {$sessionDurations}
 - Target Daily Hours: {$hours}
 - Peak Energy Time: {$peak}
 - Learning Preferences: {$styles}

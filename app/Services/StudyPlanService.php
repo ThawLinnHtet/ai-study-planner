@@ -26,6 +26,7 @@ class StudyPlanService
             'subjects' => $user->subjects,
             'exam_dates' => $user->exam_dates,
             'subject_difficulties' => $user->subject_difficulties,
+            'subject_session_durations' => $user->subject_session_durations ?? [],
             'daily_study_hours' => $user->daily_study_hours,
             'productivity_peak' => $user->productivity_peak,
             'learning_style' => $user->learning_style,

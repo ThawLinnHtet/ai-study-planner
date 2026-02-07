@@ -10,7 +10,8 @@ import {
     Sun,
     Sunset,
     Moon,
-    CalendarDays
+    CalendarDays,
+    Timer
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { toast } from '@/hooks/use-toast';
@@ -45,6 +46,7 @@ interface User {
     subjects: string[];
     exam_dates: Record<string, string | null>;
     subject_difficulties: Record<string, number>;
+    subject_session_durations: Record<string, { min: number; max: number }>;
     daily_study_hours: number;
     productivity_peak: string;
     learning_style: string[];
@@ -92,6 +94,7 @@ export default function OnboardingSettings({ user }: Props) {
         subjects: parseSubjects(user.subjects),
         exam_dates: user.exam_dates || {},
         subject_difficulties: user.subject_difficulties || {},
+        subject_session_durations: user.subject_session_durations || {},
         daily_study_hours: user.daily_study_hours || 2,
         productivity_peak: user.productivity_peak || 'morning',
         learning_style: user.learning_style || [],
@@ -116,6 +119,11 @@ export default function OnboardingSettings({ user }: Props) {
 
         // Check subject_difficulties
         if (JSON.stringify(current.subject_difficulties) !== JSON.stringify(original.subject_difficulties)) {
+            return true;
+        }
+
+        // Check subject_session_durations
+        if (JSON.stringify(current.subject_session_durations) !== JSON.stringify(original.subject_session_durations)) {
             return true;
         }
 
@@ -152,6 +160,7 @@ export default function OnboardingSettings({ user }: Props) {
         subjects: parseSubjects(user.subjects),
         exam_dates: user.exam_dates || {},
         subject_difficulties: user.subject_difficulties || {},
+        subject_session_durations: user.subject_session_durations || {},
         daily_study_hours: user.daily_study_hours || 2,
         productivity_peak: user.productivity_peak || 'morning',
         learning_style: user.learning_style || [],
@@ -408,6 +417,118 @@ export default function OnboardingSettings({ user }: Props) {
                             )}
                             {form.errors.exam_dates && (
                                 <p className="text-sm text-destructive">{form.errors.exam_dates}</p>
+                            )}
+                        </CardContent>
+                    </Card>
+
+                    {/* Session Duration Section (Optional) */}
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Timer className="w-5 h-5" />
+                                Session Duration
+                                <span className="text-xs font-normal text-muted-foreground ml-1">(Optional)</span>
+                            </CardTitle>
+                            <CardDescription>
+                                Set preferred session length per subject. Leave empty to let AI decide automatically.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            {form.data.subjects && form.data.subjects.length > 0 ? (
+                                <div className="space-y-3">
+                                    {form.data.subjects.map((subject: string) => {
+                                        const duration = form.data.subject_session_durations?.[subject];
+                                        const hasCustomDuration = duration?.min || duration?.max;
+                                        return (
+                                            <div key={subject} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
+                                                <div className="flex items-center gap-3">
+                                                    <Timer className="w-4 h-4 text-muted-foreground" />
+                                                    <div>
+                                                        <Label className="text-base font-semibold">
+                                                            {subject}
+                                                        </Label>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            {hasCustomDuration ? `${duration?.min || 30}-${duration?.max || 60} min` : 'AI decides (30-90 min)'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <Select
+                                                            value={duration?.min?.toString() || ''}
+                                                            onValueChange={(value) =>
+                                                                form.setData('subject_session_durations', {
+                                                                    ...form.data.subject_session_durations,
+                                                                    [subject]: {
+                                                                        ...form.data.subject_session_durations?.[subject],
+                                                                        min: parseInt(value),
+                                                                        max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
+                                                                    },
+                                                                })
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="w-24">
+                                                                <SelectValue placeholder="Min" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {[15, 30, 45, 60, 75, 90].map((min) => (
+                                                                    <SelectItem key={min} value={min.toString()}>
+                                                                        {min} min
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        <span className="text-sm text-muted-foreground">to</span>
+                                                        <Select
+                                                            value={duration?.max?.toString() || ''}
+                                                            onValueChange={(value) =>
+                                                                form.setData('subject_session_durations', {
+                                                                    ...form.data.subject_session_durations,
+                                                                    [subject]: {
+                                                                        ...form.data.subject_session_durations?.[subject],
+                                                                        min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
+                                                                        max: parseInt(value),
+                                                                    },
+                                                                })
+                                                            }
+                                                        >
+                                                            <SelectTrigger className="w-24">
+                                                                <SelectValue placeholder="Max" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {[15, 30, 45, 60, 75, 90, 120].map((max) => (
+                                                                    <SelectItem key={max} value={max.toString()}>
+                                                                        {max} min
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    {hasCustomDuration && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
+                                                            onClick={() => {
+                                                                const newDurations = { ...form.data.subject_session_durations };
+                                                                delete newDurations[subject];
+                                                                form.setData('subject_session_durations', newDurations);
+                                                            }}
+                                                        >
+                                                            <X className="w-4 h-4" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <Timer className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                                    <p>Add subjects first to set session durations</p>
+                                </div>
                             )}
                         </CardContent>
                     </Card>

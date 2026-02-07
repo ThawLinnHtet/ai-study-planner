@@ -33,6 +33,7 @@ class User extends Authenticatable
         'study_goal',
         'productivity_peak',
         'subject_difficulties',
+        'subject_session_durations',
     ];
 
     /**
@@ -64,6 +65,7 @@ class User extends Authenticatable
             'onboarding_step' => 'integer',
             'learning_style' => 'array',
             'subject_difficulties' => 'array',
+            'subject_session_durations' => 'array',
         ];
     }
 

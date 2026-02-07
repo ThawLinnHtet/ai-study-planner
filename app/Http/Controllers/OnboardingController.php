@@ -41,6 +41,7 @@ class OnboardingController extends Controller
                 'subjects' => $user->subjects ?? [],
                 'exam_dates' => $user->exam_dates ?? [],
                 'subject_difficulties' => $user->subject_difficulties ?? [],
+                'subject_session_durations' => $user->subject_session_durations ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
                 'productivity_peak' => $user->productivity_peak,
                 'learning_style' => $user->learning_style,
@@ -124,6 +125,9 @@ class OnboardingController extends Controller
                 ],
                 'subject_difficulties' => ['nullable', 'array'],
                 'subject_difficulties.*' => ['nullable', 'integer', 'min:1', 'max:3'],
+                'subject_session_durations' => ['nullable', 'array'],
+                'subject_session_durations.*.min' => ['nullable', 'integer', 'min:15', 'max:120'],
+                'subject_session_durations.*.max' => ['nullable', 'integer', 'min:15', 'max:120'],
             ], [
                 'exam_dates.*.after_or_equal' => 'Exam dates must be in the future.',
                 'exam_dates.*.before' => 'Exam dates must be within the next 5 years.',
@@ -164,10 +168,19 @@ class OnboardingController extends Controller
                 ->filter(fn ($d) => $d !== null)
                 ->all();
 
+            $sessionDurations = collect($data['subject_session_durations'] ?? [])
+                ->filter(function ($dur, $subject) use ($subjects) {
+                    $normalizedSubject = strtolower($subject);
+                    $normalizedSubjects = array_map('strtolower', $subjects);
+                    return in_array($normalizedSubject, $normalizedSubjects) && ($dur['min'] ?? null) && ($dur['max'] ?? null);
+                })
+                ->all();
+
             $user->forceFill([
                 'subjects' => $subjects, // Save current subjects from form
                 'exam_dates' => $examDates,
                 'subject_difficulties' => $difficulties,
+                'subject_session_durations' => $sessionDurations,
                 'onboarding_step' => max((int) ($user->onboarding_step ?? 1), 4),
             ])->save();
 

@@ -1,5 +1,5 @@
 import { Head, useForm } from '@inertiajs/react';
-import { X, BookOpen, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target } from 'lucide-react';
+import { X, BookOpen, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target, Timer } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -25,6 +25,7 @@ type OnboardingData = {
     timezone: string | null;
     productivity_peak?: string | null;
     subject_difficulties?: Record<string, number> | null;
+    subject_session_durations?: Record<string, { min: number; max: number }> | null;
 };
 
 type Props = {
@@ -41,6 +42,7 @@ type WizardForm = {
     productivity_peak: string;
     learning_style: string[];
     subject_difficulties: Record<string, number>;
+    subject_session_durations: Record<string, { min: number; max: number }>;
     study_goal: string;
     timezone: string;
     confirm: boolean;
@@ -130,6 +132,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
             ? onboarding.learning_style
             : (onboarding.learning_style ? [onboarding.learning_style] : []),
         subject_difficulties: onboarding.subject_difficulties ?? {},
+        subject_session_durations: onboarding.subject_session_durations ?? {},
         study_goal: onboarding.study_goal ?? '',
         timezone: onboarding.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Rangoon' ? 'Asia/Yangon' : Intl.DateTimeFormat().resolvedOptions().timeZone),
         confirm: false,
@@ -618,6 +621,99 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                         </div>
                                                     ))}
 
+                                                    {/* Session Duration (Optional) */}
+                                                    <div className="space-y-3 pt-2 border-t border-border/50">
+                                                        <div className="space-y-1">
+                                                            <div className="flex items-center gap-2">
+                                                                <Timer className="size-4 text-muted-foreground" />
+                                                                <Label className="text-sm font-medium">Session Duration <span className="text-xs font-normal text-muted-foreground">(Optional)</span></Label>
+                                                            </div>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Set preferred session length per subject. Leave empty to let AI decide.
+                                                            </p>
+                                                        </div>
+                                                        {form.data.subjects.map((subject) => {
+                                                            const duration = form.data.subject_session_durations?.[subject];
+                                                            const hasCustomDuration = duration?.min || duration?.max;
+                                                            return (
+                                                                <div key={`duration-${subject}`} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/50">
+                                                                    <div className="space-y-0.5">
+                                                                        <Label className="text-sm font-semibold">{subject}</Label>
+                                                                        <p className="text-xs text-muted-foreground">
+                                                                            {hasCustomDuration ? `${duration?.min || 30}-${duration?.max || 60} min` : 'AI decides (30-90 min)'}
+                                                                        </p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="flex items-center gap-1.5">
+                                                                            <Select
+                                                                                value={duration?.min?.toString() || ''}
+                                                                                onValueChange={(value) =>
+                                                                                    form.setData('subject_session_durations', {
+                                                                                        ...form.data.subject_session_durations,
+                                                                                        [subject]: {
+                                                                                            ...form.data.subject_session_durations?.[subject],
+                                                                                            min: parseInt(value),
+                                                                                            max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
+                                                                                        },
+                                                                                    })
+                                                                                }
+                                                                            >
+                                                                                <SelectTrigger className="w-24">
+                                                                                    <SelectValue placeholder="Min" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    {[15, 30, 45, 60, 75, 90].map((min) => (
+                                                                                        <SelectItem key={min} value={min.toString()}>
+                                                                                            {min} min
+                                                                                        </SelectItem>
+                                                                                    ))}
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                            <span className="text-sm text-muted-foreground">to</span>
+                                                                            <Select
+                                                                                value={duration?.max?.toString() || ''}
+                                                                                onValueChange={(value) =>
+                                                                                    form.setData('subject_session_durations', {
+                                                                                        ...form.data.subject_session_durations,
+                                                                                        [subject]: {
+                                                                                            ...form.data.subject_session_durations?.[subject],
+                                                                                            min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
+                                                                                            max: parseInt(value),
+                                                                                        },
+                                                                                    })
+                                                                                }
+                                                                            >
+                                                                                <SelectTrigger className="w-24">
+                                                                                    <SelectValue placeholder="Max" />
+                                                                                </SelectTrigger>
+                                                                                <SelectContent>
+                                                                                    {[15, 30, 45, 60, 75, 90, 120].map((max) => (
+                                                                                        <SelectItem key={max} value={max.toString()}>
+                                                                                            {max} min
+                                                                                        </SelectItem>
+                                                                                    ))}
+                                                                                </SelectContent>
+                                                                            </Select>
+                                                                        </div>
+                                                                        {hasCustomDuration && (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                                                                                onClick={() => {
+                                                                                    const newDurations = { ...form.data.subject_session_durations };
+                                                                                    delete newDurations[subject];
+                                                                                    form.setData('subject_session_durations', newDurations);
+                                                                                }}
+                                                                            >
+                                                                                <X className="size-4" />
+                                                                            </button>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+
                                                     <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
                                                         <div className="flex items-start gap-3">
                                                             <Target className="mt-0.5 size-5" />
@@ -626,7 +722,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                     Why we ask
                                                                 </div>
                                                                 <div className="text-muted-foreground">
-                                                                    If two exams are close together, we’ll ramp up earlier.
+                                                                    If two exams are close together, we'll ramp up earlier.
                                                                 </div>
                                                             </div>
                                                         </div>
