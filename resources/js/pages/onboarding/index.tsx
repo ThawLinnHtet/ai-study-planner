@@ -143,13 +143,13 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
     useEffect(() => {
         form.setData('step', step);
-    }, [step, form]);
+    }, [step]);
 
     useEffect(() => {
         if (form.data.timezone === 'Asia/Rangoon') {
             form.setData('timezone', 'Asia/Yangon');
         }
-    }, [form]);
+    }, [form.data.timezone]);
 
     const effectiveExamDates = useMemo(() => {
         const out: Record<string, string | null> = { ...form.data.exam_dates };
@@ -176,7 +176,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         }
 
         form.setData('exam_dates', effectiveExamDates);
-    }, [effectiveExamDates, form]);
+    }, [effectiveExamDates, form.data.exam_dates]);
 
     // Use the simplified subjects API hook
     const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
@@ -456,11 +456,11 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                     <h3 className="text-sm font-medium text-muted-foreground">
                                                                         Selected Subjects
                                                                     </h3>
-                                                                    <div className="text-xs text-blue-600 font-medium">
+                                                                    <div className="text-sm text-blue-600 font-medium">
                                                                         {form.data.subjects.length} subject{form.data.subjects.length !== 1 ? 's' : ''} selected
                                                                     </div>
                                                                 </div>
-                                                                <div className="text-xs text-muted-foreground mb-2">
+                                                                <div className="text-sm text-muted-foreground mb-2">
                                                                     {form.data.subjects.length === 0
                                                                         ? "Select 3-5 subjects for best results"
                                                                         : `Great! ${form.data.subjects.length === 1 ? 'Keep going' : form.data.subjects.length < 3 ? 'Add a few more' : 'Perfect selection'}`}
@@ -555,7 +555,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                         <Label htmlFor={`subject-${subject}`} className="text-base font-semibold">
                                                                             {subject}
                                                                         </Label>
-                                                                        <p className="text-xs text-muted-foreground">When is your exam?</p>
+                                                                        <p className="text-sm text-muted-foreground">When is your exam?</p>
                                                                     </div>
                                                                     <div className="w-full md:w-55">
                                                                         <DatePicker
@@ -573,7 +573,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                 </div>
 
                                                                 <div className="space-y-2 pt-2 border-t border-border/50">
-                                                                    <Label className="text-xs font-medium text-muted-foreground uppercase">Difficulty Level</Label>
+                                                                    <Label className="text-sm font-medium text-muted-foreground uppercase">Difficulty Level</Label>
                                                                     <div className="grid grid-cols-3 gap-2 max-w-sm">
                                                                         {[
                                                                             { val: 1, label: 'Easy', color: 'text-green-500' },
@@ -594,7 +594,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                                         : "bg-background border-border hover:border-primary/50"
                                                                                 )}
                                                                             >
-                                                                        <div className="flex gap-0.5">
+                                                                                <div className="flex gap-0.5">
                                                                                     {[0, 1, 2].map((i) => (
                                                                                         <Star key={i} className={cn(
                                                                                             "size-4",
@@ -602,7 +602,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                                         )} />
                                                                                     ))}
                                                                                 </div>
-                                                                                <span className="text-[10px] font-bold uppercase tracking-tighter">{opt.label}</span>
+                                                                                <span className="text-xs font-bold uppercase tracking-tighter">{opt.label}</span>
                                                                             </button>
                                                                         ))}
                                                                     </div>

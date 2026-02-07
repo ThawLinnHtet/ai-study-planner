@@ -229,7 +229,7 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <div className="flex items-center justify-between text-sm text-muted-foreground">
                                     <span>{progress.xp.total.toLocaleString()} XP</span>
                                     <span>{progress.xp.progress_percent}% to next</span>
                                 </div>
@@ -238,18 +238,18 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
 
                             <div className="grid grid-cols-2 gap-3">
                                 <div className={cn('rounded-lg border bg-muted/30 p-3')}>
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Best streak</div>
+                                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Best streak</div>
                                     <div className="mt-1 text-lg font-bold">{progress.streak.best} days</div>
                                 </div>
                                 <div className={cn('rounded-lg border bg-muted/30 p-3')}>
-                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Weekly goal</div>
+                                    <div className="text-xs uppercase tracking-wider text-muted-foreground">Weekly goal</div>
                                     <div className="mt-1 text-lg font-bold">
                                         {progress.sessions.week.target_percent == null ? '—' : `${progress.sessions.week.target_percent}%`}
                                     </div>
                                 </div>
                             </div>
 
-                            <p className="text-xs text-muted-foreground italic leading-relaxed">
+                            <p className="text-sm text-muted-foreground italic leading-relaxed">
                                 {progress.insight}
                             </p>
                         </CardContent>
@@ -258,17 +258,17 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
                     {/* AI Insight */}
                     <Card className="bg-primary/5 border-primary/20">
                         <CardHeader className="pb-2">
-                            <CardTitle className="text-sm uppercase tracking-wider text-primary flex items-center gap-2">
+                            <CardTitle className="text-base uppercase tracking-wider text-primary flex items-center gap-2">
                                 <Brain className="w-4 h-4" />
                                 Neuron Insight
                             </CardTitle>
                         </CardHeader>
                         <CardContent>
-                            <p className="text-sm italic text-muted-foreground leading-relaxed">
+                            <p className="text-base italic text-muted-foreground leading-relaxed">
                                 {plan?.generated_plan?.strategy_summary?.substring(0, 120) || 'Your personalized study strategy is being refined...'}
                                 {(plan?.generated_plan?.strategy_summary?.length ?? 0) > 120 ? '...' : ''}
                             </p>
-                            <Link href="/study-planner" className="text-xs text-primary font-bold mt-4 inline-block hover:underline">
+                            <Link href="/study-planner" className="text-sm text-primary font-bold mt-4 inline-block hover:underline">
                                 READ STRATEGY
                             </Link>
                         </CardContent>
@@ -300,11 +300,11 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
                                                     <h4 className={`font-bold truncate ${isDone ? 'line-through' : ''}`}>
                                                         {getSubjectDisplay(session)}
                                                     </h4>
-                                                    <p className="text-xs text-muted-foreground truncate">
+                                                    <p className="text-sm text-muted-foreground truncate">
                                                         {getTopicDisplay(session)}
                                                     </p>
                                                 </div>
-                                                <Badge variant="outline" className="text-[10px]">
+                                                <Badge variant="outline" className="text-sm">
                                                     {formatDuration(session.duration_minutes)}
                                                 </Badge>
                                             </CardContent>
@@ -331,22 +331,22 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
                                 <Card key={idx} className="bg-muted/30 border-none shadow-none">
                                     <CardContent className="p-3">
                                         <div className="flex justify-between items-start mb-2">
-                                            <span className="text-xs font-bold uppercase tracking-tighter text-muted-foreground">
+                                            <span className="text-sm font-bold uppercase tracking-tighter text-muted-foreground">
                                                 {format(day.date, 'eee, MMM d')}
                                             </span>
-                                            <Badge variant="secondary" className="text-[9px] px-1 h-4">
+                                            <Badge variant="secondary" className="text-xs px-1 h-4">
                                                 {day.sessions.length} sessions
                                             </Badge>
                                         </div>
                                         <div className="flex flex-wrap gap-1">
                                             {day.sessions.length > 0 ? (
                                                 day.sessions.map((s, i) => (
-                                                    <span key={i} className="text-[11px] bg-background px-2 py-0.5 rounded border text-foreground/80">
+                                                    <span key={i} className="text-xs bg-background px-2 py-0.5 rounded border text-foreground/80">
                                                         {getSubjectDisplay(s)}
                                                     </span>
                                                 ))
                                             ) : (
-                                                <span className="text-[11px] text-muted-foreground italic">Rest day</span>
+                                                <span className="text-xs text-muted-foreground italic">Rest day</span>
                                             )}
                                         </div>
                                     </CardContent>
@@ -354,7 +354,7 @@ export default function Dashboard({ plan, completedToday, progress }: Props) {
                             ))}
                         </div>
                         <Link href="/study-planner" className="block">
-                            <Button variant="ghost" className="w-full text-xs text-primary hover:text-primary hover:bg-primary/5">
+                            <Button variant="ghost" className="w-full text-sm text-primary hover:text-primary hover:bg-primary/5">
                                 View full schedule
                             </Button>
                         </Link>

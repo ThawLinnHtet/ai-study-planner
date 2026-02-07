@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Bot, Sparkles } from 'lucide-react';
@@ -15,20 +15,20 @@ type Props = {
     className?: string;
 };
 
-const STORAGE_KEY = 'neuron-chat-session';
-
 // Helper functions for sessionStorage
-const saveToSession = (data: { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] }) => {
+const getUserStorageKey = (userId: number | string) => `neuron-chat-session-${userId}`;
+
+const saveToSession = (userId: number | string, data: { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] }) => {
     try {
-        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+        sessionStorage.setItem(getUserStorageKey(userId), JSON.stringify(data));
     } catch (e) {
         console.error('Failed to save to sessionStorage:', e);
     }
 };
 
-const loadFromSession = (): { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] } | null => {
+const loadFromSession = (userId: number | string): { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] } | null => {
     try {
-        const data = sessionStorage.getItem(STORAGE_KEY);
+        const data = sessionStorage.getItem(getUserStorageKey(userId));
         if (data) {
             return JSON.parse(data);
         }
@@ -36,6 +36,14 @@ const loadFromSession = (): { threadId: string; threads: NeuronChatThread[]; mes
         console.error('Failed to load from sessionStorage:', e);
     }
     return null;
+};
+
+const clearUserSession = (userId: number | string) => {
+    try {
+        sessionStorage.removeItem(getUserStorageKey(userId));
+    } catch (e) {
+        console.error('Failed to clear sessionStorage:', e);
+    }
 };
 
 export default function NeuronChatWidget({ className }: Props) {
@@ -47,8 +55,12 @@ export default function NeuronChatWidget({ className }: Props) {
         threads: NeuronChatThread[];
         messages: NeuronChatMessage[];
     }>(() => {
+        if (!user) {
+            return { threadId: '', threads: [], messages: [] };
+        }
+
         // Try to load from sessionStorage first
-        const stored = loadFromSession();
+        const stored = loadFromSession(user.id);
         // Use sessionStorage if it has ANY chat messages (main persistence indicator)
         if (stored && stored.messages.length > 0) {
             return stored;
@@ -60,16 +72,59 @@ export default function NeuronChatWidget({ className }: Props) {
         const initialMessages = (page.props as unknown as { messages?: NeuronChatMessage[] }).messages || [];
 
         const data = { threadId: initialThreadId, threads: initialThreads, messages: initialMessages };
-        saveToSession(data);
         return data;
     });
 
     if (!user) return null;
 
+    // Track previous user ID to detect user changes
+    const previousUserIdRef = useRef<number | string | null>(null);
+
+    // Clear and reset when user changes
+    useEffect(() => {
+        if (!user) return;
+
+        // If user changed, clear previous user's session and reset state
+        if (previousUserIdRef.current !== null && previousUserIdRef.current !== user.id) {
+            // Clear previous user's session (optional cleanup)
+            if (previousUserIdRef.current) {
+                clearUserSession(previousUserIdRef.current);
+            }
+
+            // Reset chat data for new user
+            const initialThreadId = (page.props as unknown as { threadId?: string }).threadId || '';
+            const initialThreads = (page.props as unknown as { threads?: NeuronChatThread[] }).threads || [];
+            const initialMessages = (page.props as unknown as { messages?: NeuronChatMessage[] }).messages || [];
+
+            setChatData({ threadId: initialThreadId, threads: initialThreads, messages: initialMessages });
+        }
+
+        previousUserIdRef.current = user.id;
+    }, [user, page.props]);
+
+    // Save initial data to sessionStorage on first load if no session exists
+    useEffect(() => {
+        if (!user) return;
+        const stored = loadFromSession(user.id);
+        if (!stored) {
+            saveToSession(user.id, chatData);
+        }
+    }, [user]); // Run when user changes
+
     // Save to sessionStorage whenever chatData changes
     useEffect(() => {
-        saveToSession(chatData);
-    }, [chatData]);
+        if (!user) return;
+        saveToSession(user.id, chatData);
+    }, [chatData, user]);
+
+    // Cleanup when user logs out (user becomes null)
+    useEffect(() => {
+        if (user === null && previousUserIdRef.current !== null) {
+            // User logged out, clear their session
+            clearUserSession(previousUserIdRef.current);
+            previousUserIdRef.current = null;
+        }
+    }, [user]);
 
     return (
         <div className={cn('fixed bottom-5 right-5 z-40', className)}>
@@ -118,11 +173,7 @@ export default function NeuronChatWidget({ className }: Props) {
                             className="h-full rounded-none border-0"
                             onMessagesChange={(newMessages) => {
                                 // Update widget state when messages change in panel
-                                setChatData(prev => {
-                                    const updated = { ...prev, messages: newMessages };
-                                    saveToSession(updated);
-                                    return updated;
-                                });
+                                setChatData(prev => ({ ...prev, messages: newMessages }));
                             }}
                         />
                     </div>
