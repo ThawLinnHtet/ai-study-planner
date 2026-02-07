@@ -12,8 +12,8 @@ import {
     Moon,
     CalendarDays
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
-import { toast } from 'sonner';
+import { useState, useEffect, useRef } from 'react';
+import { toast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -87,10 +87,51 @@ interface OnboardingFlash {
 export default function OnboardingSettings({ user }: Props) {
     const page = usePage<SharedData>();
     const flash = page.props.flash as OnboardingFlash;
-    const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
+    // Store original values to detect changes
+    const originalValues = useRef({
+        subjects: parseSubjects(user.subjects),
+        exam_dates: user.exam_dates || {},
+        subject_difficulties: user.subject_difficulties || {},
+        daily_study_hours: user.daily_study_hours || 2,
+        productivity_peak: user.productivity_peak || 'morning',
+        learning_style: user.learning_style || [],
+        study_goal: user.study_goal || '',
+        timezone: user.timezone || '',
+    });
+
+    // Helper to check if any preference changed
+    const hasPreferencesChanged = (): boolean => {
+        const current = form.data;
+        const original = originalValues.current;
+
+        // Check subjects (array comparison)
+        if (JSON.stringify(current.subjects.sort()) !== JSON.stringify(original.subjects.sort())) {
+            return true;
+        }
+
+        // Check exam_dates (object comparison)
+        if (JSON.stringify(current.exam_dates) !== JSON.stringify(original.exam_dates)) {
+            return true;
+        }
+
+        // Check subject_difficulties
+        if (JSON.stringify(current.subject_difficulties) !== JSON.stringify(original.subject_difficulties)) {
+            return true;
+        }
+
+        // Check simple values
+        if (current.daily_study_hours !== original.daily_study_hours) return true;
+        if (current.productivity_peak !== original.productivity_peak) return true;
+        if (JSON.stringify(current.learning_style.sort()) !== JSON.stringify(original.learning_style.sort())) return true;
+        if (current.study_goal !== original.study_goal) return true;
+        if (current.timezone !== original.timezone) return true;
+
+        return false;
+    };
     // TanStack Query for subjects
     const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
     const [subjectInputValue, setSubjectInputValue] = useState('');
+    const [subjectsKey, setSubjectsKey] = useState(0); // Force re-render
 
     // Search suggestions hook
     const { data: searchData } = useSearchSuggestions(subjectInputValue);
@@ -139,7 +180,7 @@ export default function OnboardingSettings({ user }: Props) {
             setSubjectInputValue('');
 
             // Force re-render of subjects list
-            setSubjectsKey(prev => prev + 1);
+            setSubjectsKey((prev: number) => prev + 1);
 
             // Add to database in background (non-blocking)
             if (isCustomSubject) {
@@ -163,17 +204,25 @@ export default function OnboardingSettings({ user }: Props) {
         form.setData('subject_difficulties', newDifficulties);
 
         // Force re-render
-        setSubjectsKey(prev => prev + 1);
+        setSubjectsKey((prev) => prev + 1);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Manually create the data object with regenerate_plan set to true
+        // Only regenerate if preferences actually changed
+        const shouldRegenerate = hasPreferencesChanged();
+
+        // Manually create the data object with regenerate_plan set based on changes
         const submitData = {
             ...form.data,
-            regenerate_plan: true
+            regenerate_plan: shouldRegenerate
         };
+
+        // Show toast if no changes detected
+        if (!shouldRegenerate) {
+            toast.info('No changes detected. Preferences saved without regenerating schedule.');
+        }
 
         // Use router.visit for direct submission with custom data
         router.put('/settings/onboarding', submitData, {

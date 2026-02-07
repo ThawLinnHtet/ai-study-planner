@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
-import { Send, Trash2, Bot } from 'lucide-react';
+import { Send, Trash2, Bot, User, Sparkles, X, MessageSquare, Plus, Loader2 } from 'lucide-react';
+import { usePage } from '@inertiajs/react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Spinner } from '@/components/ui/spinner';
 import { cn } from '@/lib/utils';
+import type { SharedData } from '@/types';
 
 export type NeuronChatThread = {
     thread_id: string;
@@ -46,14 +48,24 @@ function getCsrfToken() {
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
+    // Always get fresh CSRF token to prevent 419 errors
+    const csrfToken = getCsrfToken();
+
     const res = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': getCsrfToken(),
+            'X-CSRF-TOKEN': csrfToken,
         },
         body: JSON.stringify(body),
     });
+
+    // Handle expired CSRF token
+    if (res.status === 419) {
+        // Token expired - reload page to get fresh token
+        window.location.reload();
+        throw new Error('Session expired. Reloading page...');
+    }
 
     if (!res.ok) {
         const text = await res.text();
@@ -79,12 +91,21 @@ async function getJson<T>(url: string): Promise<T> {
 }
 
 async function deleteJson(url: string): Promise<void> {
+    // Always get fresh CSRF token to prevent 419 errors
+    const csrfToken = getCsrfToken();
+
     const res = await fetch(url, {
         method: 'DELETE',
         headers: {
-            'X-CSRF-TOKEN': getCsrfToken(),
+            'X-CSRF-TOKEN': csrfToken,
         },
     });
+
+    // Handle expired CSRF token
+    if (res.status === 419) {
+        window.location.reload();
+        throw new Error('Session expired. Reloading page...');
+    }
 
     if (!res.ok) {
         const text = await res.text();
@@ -109,6 +130,8 @@ export default function NeuronChatPanel({
     const [error, setError] = useState<string | null>(null);
 
     const scrollRef = useRef<HTMLDivElement | null>(null);
+    const page = usePage<SharedData>();
+    const user = page.props.auth?.user;
 
     const hasAnyMessages = messages.some((m) => m.role !== 'system');
 
@@ -246,8 +269,17 @@ export default function NeuronChatPanel({
                         </div>
                         <div>
                             <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Neuron</h2>
-                            <div className="text-xs text-slate-500 dark:text-slate-400">
-                                {variant === 'page' ? 'AI Study Assistant' : 'Your AI Tutor'}
+                            <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                <span>{variant === 'page' ? 'AI Study Assistant' : 'Your AI Tutor'}</span>
+                                {user && (
+                                    <>
+                                        <span>•</span>
+                                        <div className="flex items-center gap-1">
+                                            <User className="h-3 w-3" />
+                                            <span className="font-medium">{user.name}</span>
+                                        </div>
+                                    </>
+                                )}
                             </div>
                         </div>
                     </div>

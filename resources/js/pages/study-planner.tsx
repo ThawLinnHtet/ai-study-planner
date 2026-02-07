@@ -3,10 +3,15 @@ import {
     format,
     startOfWeek,
     addDays,
+    addMonths,
+    subMonths,
     isSameDay,
     isToday,
     parseISO,
-    startOfDay
+    startOfDay,
+    startOfMonth,
+    endOfMonth,
+    endOfWeek
 } from 'date-fns';
 import {
     CheckCircle2,
@@ -20,9 +25,17 @@ import {
     BookOpen,
     Flame,
     Sparkles,
-    Link2
+    Link2,
+    Trophy,
+    Target,
+    Zap,
+    TrendingUp,
+    Crown,
+    Calendar,
+    ChevronDown,
+    Layers
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -106,8 +119,51 @@ const breadcrumbs: BreadcrumbItem[] = [
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function StudyPlanner({ plan, completedSessions, progress }: Props) {
-    const [selectedDate, setSelectedDate] = useState(new Date());
+    const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
+    const [viewMode, setViewMode] = useState<'month' | 'week'>('week');
+    const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
+    const cardRef = useRef<HTMLDivElement>(null);
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
+
+    // Calculate month data
+    const monthStart = startOfMonth(selectedDate);
+    const monthEnd = endOfMonth(selectedDate);
+    const monthDays = useMemo(() => {
+        const days = [];
+        const start = startOfWeek(monthStart, { weekStartsOn: 1 });
+        const end = endOfWeek(monthEnd, { weekStartsOn: 1 });
+
+        for (let day = start; day <= end; day = addDays(day, 1)) {
+            days.push(day);
+        }
+        return days;
+    }, [selectedDate]);
+
+    // Calculate weeks in month
+    const weeksInMonth = useMemo(() => {
+        const weeks = [];
+        const start = startOfWeek(monthStart, { weekStartsOn: 1 });
+
+        for (let i = 0; i < 6; i++) {
+            const weekStart = addDays(start, i * 7);
+            const weekEnd = addDays(weekStart, 6);
+
+            if (weekStart <= monthEnd) {
+                weeks.push({
+                    start: weekStart,
+                    end: weekEnd,
+                    days: Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
+                });
+            }
+        }
+        return weeks;
+    }, [selectedDate]);
+
+    // Get sessions for a specific date
+    const getSessionsForDate = (date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        return plan?.generated_plan?.schedule[dateStr]?.sessions || [];
+    };
 
 
     const form = useForm({
@@ -300,17 +356,26 @@ export default function StudyPlanner({ plan, completedSessions, progress }: Prop
             <Head title="Study Planner" />
 
             <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-                <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
-                    <Heading
-                        title="Study Planner"
-                        description={plan.title}
-                    />
-                    <div className="flex items-center gap-2">
+                {/* Premium Header */}
+                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-violet-500/90 via-purple-500/85 to-indigo-600/90 text-white p-6 md:p-8 shadow-2xl dark:from-violet-600 dark:via-purple-600 dark:to-indigo-700 animate-fade-in">
+                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHZpZXdCb3g9IjAgMCA2MCA2MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZyBmaWxsPSJub25lIiBmaWxsLXJ1bGU9ImV2ZW5vZGQiPjxnIGZpbGw9IiNmZmYiIGZpbGwtb3BhY2l0eT0iMC4wMyI+PGNpcmNsZSBjeD0iMzAiIGN5PSIzMCIgcj0iMiIvPjwvZz48L2c+PC9zdmc+')] opacity-50 animate-pulse-slow"></div>
+                    <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-6">
+                        <div className="space-y-2 slide-in-left">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-white/20 rounded-xl backdrop-blur-sm border border-white/10 shadow-lg animate-float">
+                                    <Crown className="w-6 h-6 text-yellow-300" />
+                                </div>
+                                <span className="text-base font-medium text-white/90 uppercase tracking-wider animate-fade-in-up delay-50">Neuron AI Powered</span>
+                            </div>
+                            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-white to-white/80 bg-clip-text text-transparent animate-fade-in-up delay-100">{plan.title}</h1>
+                            <p className="text-white/90 max-w-lg animate-fade-in-up delay-150">{progress.insight}</p>
+                        </div>
                         <Button
-                            variant="outline"
-                            size="sm"
+                            variant="secondary"
+                            size="lg"
                             onClick={handleRebalance}
                             disabled={rebalanceForm.processing}
+                            className="bg-white/25 backdrop-blur-sm border-white/40 text-white hover:bg-white/35 dark:bg-white/20 dark:border-white/30 dark:hover:bg-white/30 shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 animate-fade-in-up delay-200"
                         >
                             <RefreshCw className={cn("w-4 h-4 mr-2", rebalanceForm.processing && "animate-spin")} />
                             Re-balance with AI
@@ -318,216 +383,539 @@ export default function StudyPlanner({ plan, completedSessions, progress }: Prop
                     </div>
                 </div>
 
-                <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
-                    <CardContent className="p-4 md:p-5">
-                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                            <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                    <Badge variant="secondary" className="gap-1">
-                                        <Sparkles className="w-3 h-3" />
-                                        Level {progress.xp.level}
-                                    </Badge>
-                                    <Badge variant="secondary" className="gap-1">
-                                        <Flame className="w-3 h-3" />
-                                        {progress.streak.current} day streak
-                                    </Badge>
-                                    {progress.sessions.week.target_percent != null ? (
-                                        <Badge variant="outline" className="text-[10px]">
-                                            Weekly {progress.sessions.week.target_percent}%
-                                        </Badge>
-                                    ) : null}
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Card className="group relative overflow-hidden bg-gradient-to-br from-amber-500/10 to-orange-500/10 border-amber-500/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 hover:border-amber-500/30 animate-fade-in-up delay-250 card-tilt">
+                        <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"></div>
+                        <CardContent className="p-4 relative">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <svg className="w-12 h-12 transform -rotate-90">
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-amber-200"
+                                        />
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-amber-500 animate-progress-ring"
+                                            style={{
+                                                '--progress': '0.75',
+                                                strokeDasharray: '125.6',
+                                                strokeDashoffset: '31.4'
+                                            } as React.CSSProperties}
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Trophy className="w-5 h-5 text-amber-600" />
+                                    </div>
                                 </div>
-                                <p className="text-sm text-muted-foreground italic">
-                                    {progress.insight}
-                                </p>
-                            </div>
-                            <div className="min-w-[260px] space-y-2">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span>{progress.xp.total.toLocaleString()} XP</span>
-                                    <span>{progress.xp.progress_percent}% to next</span>
+                                <div>
+                                    <p className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Level</p>
+                                    <p className="text-xl font-bold text-amber-600">{progress.xp.level}</p>
                                 </div>
-                                <Progress value={progress.xp.progress_percent} className="h-2" />
                             </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="group relative overflow-hidden bg-gradient-to-br from-rose-500/10 to-red-500/10 border-rose-500/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 hover:border-rose-500/30 animate-fade-in-up delay-300 card-tilt">
+                        <div className="absolute inset-0 bg-gradient-to-br from-rose-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"></div>
+                        <CardContent className="p-4 relative">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <svg className="w-12 h-12 transform -rotate-90">
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-rose-200"
+                                        />
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-rose-500 animate-progress-ring"
+                                            style={{
+                                                '--progress': Math.min(progress.streak.current / 30, 1).toString(),
+                                                strokeDasharray: '125.6',
+                                                strokeDashoffset: `${125.6 * (1 - Math.min(progress.streak.current / 30, 1))}`
+                                            } as React.CSSProperties}
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Flame className="w-5 h-5 text-rose-600" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Streak</p>
+                                    <p className="text-xl font-bold text-rose-600">{progress.streak.current}d</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="group relative overflow-hidden bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 hover:border-emerald-500/30 animate-fade-in-up delay-350 card-tilt">
+                        <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"></div>
+                        <CardContent className="p-4 relative">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <svg className="w-12 h-12 transform -rotate-90">
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-emerald-200"
+                                        />
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-emerald-500 animate-progress-ring"
+                                            style={{
+                                                '--progress': (progress.xp.progress_percent / 100).toString(),
+                                                strokeDasharray: '125.6',
+                                                strokeDashoffset: `${125.6 * (1 - progress.xp.progress_percent / 100)}`
+                                            } as React.CSSProperties}
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <Zap className="w-5 h-5 text-emerald-600" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground uppercase tracking-wider font-medium">XP Points</p>
+                                    <p className="text-xl font-bold text-emerald-600">{progress.xp.total.toLocaleString()}</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    <Card className="group relative overflow-hidden bg-gradient-to-br from-blue-500/10 to-cyan-500/10 border-blue-500/20 backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-150 hover:scale-105 hover:border-blue-500/30 animate-fade-in-up delay-400 card-tilt">
+                        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150"></div>
+                        <CardContent className="p-4 relative">
+                            <div className="flex items-center gap-3">
+                                <div className="relative">
+                                    <svg className="w-12 h-12 transform -rotate-90">
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-blue-200"
+                                        />
+                                        <circle
+                                            cx="24"
+                                            cy="24"
+                                            r="20"
+                                            stroke="currentColor"
+                                            strokeWidth="4"
+                                            fill="none"
+                                            className="text-blue-500 animate-progress-ring"
+                                            style={{
+                                                '--progress': (progress.xp.progress_percent / 100).toString(),
+                                                strokeDasharray: '125.6',
+                                                strokeDashoffset: `${125.6 * (1 - progress.xp.progress_percent / 100)}`
+                                            } as React.CSSProperties}
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <TrendingUp className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-muted-foreground uppercase tracking-wider font-medium">Progress</p>
+                                    <p className="text-xl font-bold text-blue-600">{progress.xp.progress_percent}%</p>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                {/* Premium Hybrid Navigation - Ultra Compact */}
+                <div className="relative animate-fade-in-up delay-450">
+                    {/* Single Row Header with Toggle */}
+                    <div className="flex items-center justify-between gap-4 mb-2 bg-gradient-to-r from-card/50 to-card/30 backdrop-blur-sm rounded-xl p-2 border border-border/50">
+                        <div className="flex items-center gap-2">
+                            <h3 className="text-base font-bold text-foreground">
+                                {format(selectedDate, 'MMMM yyyy')}
+                            </h3>
+                            <Badge variant="outline" className="text-base px-1.5 py-0 bg-primary/5 border-primary/20">
+                                {viewMode === 'month' ? 'Month' : 'Week'}
+                            </Badge>
                         </div>
-                    </CardContent>
-                </Card>
 
-                {/* Week Navigation */}
-                <div className="flex items-center justify-between bg-card border rounded-xl p-2 shadow-sm">
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
-                        <ChevronLeft className="w-5 h-5" />
-                    </Button>
+                        <div className="flex items-center gap-2">
+                            {/* Animated Toggle Switch */}
+                            <div className="flex items-center gap-1 bg-muted/50 rounded-lg p-0.5">
+                                <button
+                                    onClick={() => setViewMode('month')}
+                                    className={cn(
+                                        "relative px-2 py-1 rounded text-base font-medium transition-all duration-200 flex items-center gap-1",
+                                        viewMode === 'month'
+                                            ? "bg-primary text-primary-foreground shadow-md"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <Calendar className="w-3 h-3" />
+                                    <span>Month</span>
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('week')}
+                                    className={cn(
+                                        "relative px-2 py-1 rounded text-base font-medium transition-all duration-200 flex items-center gap-1",
+                                        viewMode === 'week'
+                                            ? "bg-primary text-primary-foreground shadow-md"
+                                            : "text-muted-foreground hover:text-foreground"
+                                    )}
+                                >
+                                    <CalendarIcon className="w-3 h-3" />
+                                    <span>Week</span>
+                                </button>
+                            </div>
 
-                    <div className="flex-1 grid grid-cols-7 gap-1 px-2">
-                        {weekDays.map((day) => (
-                            <button
-                                key={day.name}
-                                onClick={() => setSelectedDate(day.date)}
-                                className={cn(
-                                    "flex flex-col items-center py-2 rounded-lg transition-all",
-                                    isSameDay(day.date, selectedDate)
-                                        ? "bg-primary text-primary-foreground shadow-md"
-                                        : "hover:bg-muted",
-                                    day.isToday && !isSameDay(day.date, selectedDate) && "text-primary font-bold"
-                                )}
+                            {/* Quick Jump Button */}
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => {
+                                    setSelectedDate(startOfDay(new Date()));
+                                    setViewMode('week');
+                                }}
+                                className="h-6 px-2 text-base hover:bg-primary/10 hover:text-primary font-semibold"
                             >
-                                <span className="text-[10px] uppercase tracking-wider opacity-80">{day.name.substring(0, 3)}</span>
-                                <span className="text-lg font-semibold">{format(day.date, 'd')}</span>
-                                {day.isToday && <div className={cn("w-1 h-1 rounded-full mt-1", isSameDay(day.date, selectedDate) ? "bg-white" : "bg-primary")} />}
-                            </button>
-                        ))}
+                                Today
+                            </Button>
+                        </div>
                     </div>
 
-                    <Button variant="ghost" size="icon" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
-                        <ChevronRight className="w-5 h-5" />
-                    </Button>
+                    {viewMode === 'month' ? (
+                        /* Premium Month View - Ultra Compact */
+                        <Card className="border-0 shadow-lg backdrop-blur-sm overflow-hidden bg-card/50">
+                            <CardContent className="p-2">
+                                {/* Navigation Row */}
+                                <div className="flex items-center justify-between mb-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setSelectedDate(subMonths(selectedDate, 1))}
+                                        className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+                                    >
+                                        <ChevronLeft className="w-3 h-3" />
+                                    </Button>
+                                    <span className="text-sm font-semibold">{format(selectedDate, 'MMM yyyy')}</span>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setSelectedDate(addMonths(selectedDate, 1))}
+                                        className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+                                    >
+                                        <ChevronRight className="w-3 h-3" />
+                                    </Button>
+                                </div>
+
+                                {/* Weekday Headers */}
+                                <div className="grid grid-cols-7 gap-1 mb-1">
+                                    {DAYS.map((day) => (
+                                        <div key={day} className="text-center text-sm font-bold text-muted-foreground uppercase">
+                                            {day.substring(0, 1)}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Month Days - Ultra Compact */}
+                                <div className="space-y-0.5">
+                                    {weeksInMonth.map((week, weekIdx) => (
+                                        <div
+                                            key={weekIdx}
+                                            className={cn(
+                                                "group grid grid-cols-7 gap-1 p-1 rounded-lg transition-all duration-200 cursor-pointer",
+                                                hoveredWeek === weekIdx && "bg-primary/5",
+                                                "hover:bg-muted/30"
+                                            )}
+                                            onClick={() => {
+                                                setSelectedDate(week.start);
+                                                setViewMode('week');
+                                            }}
+                                            onMouseEnter={() => setHoveredWeek(weekIdx)}
+                                            onMouseLeave={() => setHoveredWeek(null)}
+                                        >
+                                            {week.days.map((day, dayIdx) => {
+                                                const sessions = getSessionsForDate(day);
+                                                const isCurrentMonth = day.getMonth() === selectedDate.getMonth();
+                                                const isSelected = isSameDay(day, selectedDate);
+                                                const dayIsToday = isToday(day);
+
+                                                return (
+                                                    <button
+                                                        key={dayIdx}
+                                                        onClick={() => setSelectedDate(day)}
+                                                        className={cn(
+                                                            "relative flex flex-col items-center justify-center p-1 rounded transition-all duration-150 min-h-[32px]",
+                                                            !isCurrentMonth && "opacity-30",
+                                                            isSelected && "bg-primary text-primary-foreground shadow-md ring-1 ring-primary/50",
+                                                            dayIsToday && !isSelected && "ring-1 ring-primary/50 bg-primary/5",
+                                                            sessions.length > 0 && !isSelected && "bg-primary/5",
+                                                            "hover:bg-muted/50 hover:scale-105 cursor-pointer"
+                                                        )}
+                                                    >
+                                                        <span className={cn(
+                                                            "text-sm font-semibold",
+                                                            isSelected && "text-primary-foreground",
+                                                            dayIsToday && !isSelected && "text-primary"
+                                                        )}>
+                                                            {format(day, 'd')}
+                                                        </span>
+
+                                                        {sessions.length > 0 && (
+                                                            <div className="flex gap-0.5 mt-0.5">
+                                                                {sessions.slice(0, 3).map((_, idx) => (
+                                                                    <div
+                                                                        key={idx}
+                                                                        className={cn(
+                                                                            "w-1 h-1 rounded-full",
+                                                                            isSelected ? "bg-white" : "bg-primary"
+                                                                        )}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    ))}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        /* Premium Week View - Ultra Compact */
+                        <Card className="border-0 shadow-lg backdrop-blur-sm overflow-hidden bg-card/50">
+                            <CardContent className="p-2">
+                                {/* Navigation Row */}
+                                <div className="flex items-center justify-between mb-2">
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setSelectedDate(addDays(selectedDate, -7))}
+                                        className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+                                    >
+                                        <ChevronLeft className="w-3 h-3" />
+                                    </Button>
+                                    <span className="text-sm font-semibold">Week of {format(weekStart, 'MMM d')}</span>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        onClick={() => setSelectedDate(addDays(selectedDate, 7))}
+                                        className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
+                                    >
+                                        <ChevronRight className="w-3 h-3" />
+                                    </Button>
+                                </div>
+
+                                {/* Week Days - Ultra Compact */}
+                                <div className="grid grid-cols-7 gap-1">
+                                    {weekDays.map((day) => {
+                                        const sessions = getSessionsForDate(day.date);
+                                        const dayIsToday = day.isToday;
+                                        const isSelected = isSameDay(day.date, selectedDate);
+
+                                        return (
+                                            <button
+                                                key={day.name}
+                                                onClick={() => setSelectedDate(day.date)}
+                                                className={cn(
+                                                    "relative flex flex-col items-center py-2 px-1 rounded-lg transition-all duration-200",
+                                                    isSelected
+                                                        ? "bg-primary text-primary-foreground shadow-md ring-1 ring-primary/50"
+                                                        : "hover:bg-muted/50",
+                                                    dayIsToday && !isSelected && "ring-1 ring-primary/50 bg-primary/5"
+                                                )}
+                                            >
+                                                <span className={cn(
+                                                    "text-sm uppercase tracking-wider font-bold mb-1",
+                                                    isSelected ? "text-primary-foreground" : "text-muted-foreground"
+                                                )}>
+                                                    {day.name.substring(0, 3)}
+                                                </span>
+
+                                                <span className={cn(
+                                                    "text-base font-bold mb-1",
+                                                    isSelected && "text-primary-foreground",
+                                                    dayIsToday && !isSelected && "text-primary"
+                                                )}>
+                                                    {format(day.date, 'd')}
+                                                </span>
+
+                                                {sessions.length > 0 && (
+                                                    <div className="flex gap-0.5">
+                                                        {sessions.slice(0, 3).map((_, idx) => (
+                                                            <div
+                                                                key={idx}
+                                                                className={cn(
+                                                                    "w-1 h-1 rounded-full",
+                                                                    isSelected ? "bg-white" : "bg-primary"
+                                                                )}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </CardContent>
+                        </Card>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                     {/* Daily Tasks */}
                     <div className="lg:col-span-2 space-y-6">
                         <div className="flex items-center justify-between">
-                            <h3 className="text-xl font-bold flex items-center gap-2">
-                                <CalendarIcon className="w-5 h-5 text-primary" />
+                            <h3 className="text-xl font-bold flex items-center gap-2 animate-fade-in-up delay-500">
+                                <div className="p-1.5 bg-primary/10 rounded-lg border border-primary/20">
+                                    <CalendarIcon className="w-5 h-5 text-primary" />
+                                </div>
                                 {isToday(selectedDate) ? "Today's Schedule" : format(selectedDate, 'eeee, MMMM do')}
                             </h3>
-                            <Badge variant="outline" className="px-3 py-1 uppercase tracking-wider">
+                            <Badge variant="outline" className="px-3 py-1 uppercase tracking-wider bg-primary/5 border-primary/20 text-primary animate-fade-in-up delay-550">
                                 {todaySessions.length} Sessions
                             </Badge>
                         </div>
 
                         {todaySessions.length > 0 ? (
-                            <div className="space-y-4">
+                            <div className="space-y-3">
                                 {todaySessions.map((session, idx) => {
                                     const subj = getSubjectDisplay(session);
                                     const top = getTopicDisplay(session);
                                     const done = isCompleted(selectedDate, subj, top);
+
+                                    const focusColors = {
+                                        high: { border: 'border-l-rose-500', bg: 'bg-rose-50 dark:bg-rose-950/20', text: 'text-rose-600 dark:text-rose-400' },
+                                        medium: { border: 'border-l-amber-500', bg: 'bg-amber-50 dark:bg-amber-950/20', text: 'text-amber-600 dark:text-amber-400' },
+                                        low: { border: 'border-l-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-950/20', text: 'text-emerald-600 dark:text-emerald-400' }
+                                    };
+                                    const colors = focusColors[session.focus_level ?? 'medium'];
+
                                     return (
                                         <Card
                                             key={`${subj}-${top}-${idx}`}
                                             className={cn(
-                                                "transition-all border-l-4 overflow-hidden",
-                                                session.focus_level === 'high' ? "border-l-destructive" :
-                                                    session.focus_level === 'medium' ? "border-l-amber-500" : "border-l-emerald-500",
-                                                done && "opacity-60 bg-muted/50 border-l-muted"
+                                                "group relative overflow-hidden transition-all duration-500 border-l-[3px] backdrop-blur-sm",
+                                                colors.border,
+                                                done ? "opacity-50 hover:opacity-70" : "hover:scale-[1.02] hover:shadow-xl",
+                                                "animate-fade-in-up delay-600"
                                             )}
+                                            style={{ animationDelay: `${600 + idx * 50}ms` }}
                                         >
-                                            <CardContent className="p-0">
-                                                <div className="flex items-center p-4 gap-4">
+                                            <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                                            <CardContent className="p-5 relative">
+                                                <div className="flex items-start gap-4">
                                                     <button
                                                         onClick={() => toggleSession(selectedDate, session)}
-                                                        className="shrink-0 transition-transform hover:scale-110"
+                                                        className="shrink-0 mt-0.5 transition-all duration-300 hover:scale-110 active:scale-95"
                                                     >
                                                         {done ? (
-                                                            <CheckCircle2 className="w-8 h-8 text-emerald-500 fill-emerald-100" />
+                                                            <CheckCircle2 className="w-7 h-7 text-emerald-500 drop-shadow-sm" />
                                                         ) : (
-                                                            <Circle className="w-8 h-8 text-muted-foreground" />
+                                                            <Circle className="w-7 h-7 text-muted-foreground hover:text-primary transition-colors duration-200" />
                                                         )}
                                                     </button>
 
-                                                    <div className="flex-1 min-w-0">
-                                                        <div className="flex items-center gap-2 mb-2">
-                                                            <h4 className={cn("font-bold text-lg truncate", done && "line-through")}>
-                                                                {subj}
-                                                            </h4>
-                                                            <Badge variant="secondary" className="text-[10px] h-5 gap-1">
-                                                                <Flame className="w-3 h-3" />
-                                                                {(session.focus_level ?? 'medium').toUpperCase()}
-                                                            </Badge>
-                                                            {session.focus_level === 'high' ? (
-                                                                <Badge className="text-[10px] h-5 gap-1 bg-primary/10 text-primary border border-primary/20">
-                                                                    <Sparkles className="w-3 h-3" />
-                                                                    Deep Work
-                                                                </Badge>
-                                                            ) : null}
-                                                        </div>
-                                                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                                                            <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                                                                <BookOpen className="w-3 h-3" />
-                                                                Session
-                                                            </Badge>
-                                                            <Badge variant="outline" className="text-[10px] h-5 gap-1">
-                                                                <Clock className="w-3 h-3" />
-                                                                {formatDuration(session.duration_minutes)}
-                                                            </Badge>
-                                                            <Badge variant="outline" className={cn("text-[10px] h-5 gap-1", done ? "border-emerald-500/40 text-emerald-600" : "border-amber-500/40 text-amber-600")}>
-                                                                {done ? <CheckCircle2 className="w-3 h-3" /> : <Circle className="w-3 h-3" />}
-                                                                {done ? 'Completed' : 'Up Next'}
-                                                            </Badge>
-                                                        </div>
-                                                        <p className="text-muted-foreground text-sm line-clamp-1 italic">
-                                                            {top}
-                                                        </p>
-                                                    </div>
-
-                                                    <div className="flex flex-col items-end gap-1">
-                                                        <div className="flex items-center text-sm font-medium text-muted-foreground">
-                                                            <Clock className="w-3 h-3 mr-1" />
-                                                            {formatDuration(session.duration_minutes)}
-                                                        </div>
-                                                        <TooltipProvider>
-                                                            <Tooltip>
-                                                                <TooltipTrigger asChild>
-                                                                    <div className="p-1">
-                                                                        <Flame className={cn(
-                                                                            "w-4 h-4",
-                                                                            session.focus_level === 'high' ? "text-destructive" :
-                                                                                session.focus_level === 'medium' ? "text-amber-500" : "text-emerald-500"
-                                                                        )} />
+                                                    <div className="flex-1 min-w-0 space-y-2">
+                                                        <div className="flex items-start justify-between gap-3">
+                                                            <div className="flex-1 min-w-0">
+                                                                <h4 className={cn(
+                                                                    "font-semibold text-lg leading-tight mb-1 transition-colors duration-200",
+                                                                    done && "line-through text-muted-foreground"
+                                                                )}>
+                                                                    {subj}
+                                                                </h4>
+                                                                {session.focus_level === 'high' && (
+                                                                    <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium animate-pulse">
+                                                                        <Sparkles className="w-3.5 h-3.5" />
+                                                                        <span>Deep Focus Required</span>
                                                                     </div>
-                                                                </TooltipTrigger>
-                                                                <TooltipContent>
-                                                                    {session.focus_level === 'high' ? "High focus required" : "Moderate pace"}
-                                                                </TooltipContent>
-                                                            </Tooltip>
-                                                        </TooltipProvider>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-2 text-base font-medium text-muted-foreground shrink-0 bg-muted/50 px-2 py-1 rounded-lg border border-border/30">
+                                                                <Clock className="w-4 h-4" />
+                                                                <span>{formatDuration(session.duration_minutes)}</span>
+                                                            </div>
+                                                        </div>
+
+                                                        {top && (
+                                                            <p className="text-base text-muted-foreground leading-relaxed line-clamp-2">
+                                                                {top}
+                                                            </p>
+                                                        )}
+
+                                                        {session.key_topics && session.key_topics.length > 0 && (
+                                                            <div className="pt-3 border-t border-border/40">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                                                    <span className="text-base font-semibold text-foreground">Key Topics</span>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1.5">
+                                                                    {session.key_topics.map((topic, topicIdx) => (
+                                                                        <span
+                                                                            key={`${subj}-topic-${topicIdx}`}
+                                                                            className="inline-flex items-center px-2.5 py-1 rounded-full text-base font-medium bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors duration-200"
+                                                                        >
+                                                                            {topic}
+                                                                        </span>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {session.resources && session.resources.length > 0 && (
+                                                            <div className="pt-3 border-t border-border/40">
+                                                                <div className="flex items-center gap-2 mb-2">
+                                                                    <BookOpen className="w-3.5 h-3.5 text-primary" />
+                                                                    <span className="text-base font-semibold text-foreground">Resources</span>
+                                                                </div>
+                                                                <div className="space-y-1.5">
+                                                                    {session.resources.map((resource, resourceIdx) => (
+                                                                        <a
+                                                                            key={`${subj}-res-${resourceIdx}`}
+                                                                            href={resource.url}
+                                                                            target="_blank"
+                                                                            rel="noreferrer"
+                                                                            className="flex items-center gap-2 text-base text-primary hover:text-primary/80 hover:underline transition-all duration-200 hover:translate-x-1"
+                                                                        >
+                                                                            <Link2 className="w-3.5 h-3.5 shrink-0" />
+                                                                            <span className="truncate">{resource.title}</span>
+                                                                        </a>
+                                                                    ))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
-                                                </div>
-                                                <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
-                                                    {session.key_topics && session.key_topics.length > 0 ? (
-                                                        <div className="space-y-2">
-                                                            <Badge variant="outline" className="text-[11px] h-6 gap-1">
-                                                                <Sparkles className="w-3 h-3" />
-                                                                Key Topics
-                                                            </Badge>
-                                                            <div className="flex flex-wrap gap-1">
-                                                                {session.key_topics.map((topic, topicIdx) => (
-                                                                    <Badge key={`${subj}-topic-${topicIdx}`} variant="secondary" className="text-xs">
-                                                                        {topic}
-                                                                    </Badge>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs text-muted-foreground">Key topics will appear after regeneration.</p>
-                                                    )}
-                                                    {session.resources && session.resources.length > 0 ? (
-                                                        <div className="mt-3 space-y-2">
-                                                            <Badge variant="outline" className="text-[11px] h-6 gap-1">
-                                                                <Link2 className="w-3 h-3" />
-                                                                Resources
-                                                            </Badge>
-                                                            <div className="space-y-1">
-                                                                {session.resources.map((resource, resourceIdx) => (
-                                                                    <a
-                                                                        key={`${subj}-res-${resourceIdx}`}
-                                                                        href={resource.url}
-                                                                        target="_blank"
-                                                                        rel="noreferrer"
-                                                                        className="flex items-center gap-2 text-sm text-primary hover:underline"
-                                                                    >
-                                                                        <Link2 className="w-3 h-3" />
-                                                                        <span className="truncate">{resource.title}</span>
-                                                                        {resource.type ? (
-                                                                            <Badge variant="secondary" className="text-[10px] h-5">
-                                                                                {resource.type}
-                                                                            </Badge>
-                                                                        ) : null}
-                                                                    </a>
-                                                                ))}
-                                                            </div>
-                                                        </div>
-                                                    ) : null}
                                                 </div>
                                             </CardContent>
                                         </Card>
@@ -535,47 +923,60 @@ export default function StudyPlanner({ plan, completedSessions, progress }: Prop
                                 })}
                             </div>
                         ) : (
-                            <Card className="border-dashed py-12">
-                                <CardContent className="flex flex-col items-center justify-center text-center">
-                                    <div className="w-12 h-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                                        <Clock className="w-6 h-6 text-muted-foreground" />
+                            <div className="text-center py-16 px-4 animate-fade-in-up delay-600">
+                                <div className="relative inline-flex items-center justify-center w-24 h-24 mb-6">
+                                    <div className="absolute inset-0 bg-gradient-to-br from-violet-500/20 to-purple-500/20 rounded-full animate-pulse"></div>
+                                    <div className="relative w-16 h-16 bg-gradient-to-br from-violet-500 to-purple-600 rounded-full flex items-center justify-center shadow-lg shadow-violet-500/25 animate-float">
+                                        <Sparkles className="w-8 h-8 text-white" />
                                     </div>
-                                    <h4 className="font-medium text-muted-foreground">No sessions scheduled</h4>
-                                    <p className="text-sm text-muted-foreground mt-1">Take a break or review your goals!</p>
-                                </CardContent>
-                            </Card>
+                                </div>
+                                <h4 className="text-xl font-bold text-foreground mb-2">All Caught Up!</h4>
+                                <p className="text-muted-foreground max-w-sm mx-auto">You've completed all your sessions for today. Take a well-deserved break or review your progress!</p>
+                            </div>
                         )}
                     </div>
 
                     {/* Sidebar / Strategy */}
                     <div className="space-y-6">
-                        <Card className="bg-primary/5 border-primary/20">
+                        <Card className="relative overflow-hidden border-0 bg-gradient-to-br from-violet-600/10 via-purple-600/5 to-background backdrop-blur-sm shadow-lg hover:shadow-xl transition-all duration-150 animate-fade-in-up delay-650">
+                            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-violet-500/10 to-transparent rounded-full blur-3xl animate-pulse-slow"></div>
                             <CardHeader className="pb-2">
-                                <CardTitle className="text-sm uppercase tracking-wider text-primary flex items-center gap-2">
-                                    <Sparkles className="w-4 h-4" />
-                                    Neuron Logic
+                                <CardTitle className="text-sm uppercase tracking-wider text-violet-600 dark:text-violet-400 flex items-center gap-2">
+                                    <div className="p-1.5 bg-violet-500/10 rounded-lg border border-violet-500/20">
+                                        <Sparkles className="w-4 h-4" />
+                                    </div>
+                                    Neuron AI Strategy
                                 </CardTitle>
                             </CardHeader>
                             <CardContent>
                                 <p className="text-sm leading-relaxed text-muted-foreground">
-                                    {plan?.generated_plan?.strategy_summary || 'Your study strategy is being calculated by Neuron AI...'}
+                                    {plan?.generated_plan?.strategy_summary || 'Your personalized study strategy is being optimized by Neuron AI based on your learning patterns and goals...'}
                                 </p>
                             </CardContent>
                         </Card>
 
-                        <Card>
-                            <CardHeader className="pb-2">
-                                <CardTitle className="text-sm font-bold">Goal Context</CardTitle>
+                        <Card className="border-0 shadow-lg shadow-black/5 backdrop-blur-sm hover:shadow-xl transition-all duration-150 animate-fade-in-up delay-700">
+                            <CardHeader className="pb-3">
+                                <CardTitle className="text-sm font-bold flex items-center gap-2">
+                                    <div className="p-1.5 bg-primary/10 rounded-lg border border-primary/20">
+                                        <Target className="w-4 h-4 text-primary" />
+                                    </div>
+                                    Your Goal
+                                </CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
-                                <div className="p-3 bg-muted rounded-lg text-sm italic">
-                                    "{plan.goal}"
+                                <div className="relative p-4 bg-muted/50 dark:bg-muted/30 rounded-xl border border-border/50 hover:bg-muted/60 transition-colors duration-200">
+                                    <div className="absolute top-2 right-2">
+                                        <Badge variant="outline" className="text-sm uppercase bg-background/80 backdrop-blur-sm">
+                                            {plan.status}
+                                        </Badge>
+                                    </div>
+                                    <p className="text-sm italic text-foreground pr-16">"{plan.goal}"</p>
                                 </div>
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                    <span>Plan Status:</span>
-                                    <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-200 bg-emerald-50 uppercase">
-                                        {plan.status}
-                                    </Badge>
+
+                                <div className="flex items-center justify-between text-sm text-muted-foreground pt-2 border-t border-border/40">
+                                    <span>Study Duration</span>
+                                    <span className="font-medium text-foreground">{format(parseISO(plan.starts_on), 'MMM d, yyyy')} - {format(parseISO(plan.ends_on), 'MMM d, yyyy')}</span>
                                 </div>
                             </CardContent>
                         </Card>

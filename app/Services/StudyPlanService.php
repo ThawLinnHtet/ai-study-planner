@@ -129,17 +129,9 @@ class StudyPlanService
 
         $schedule = $currentWeek['schedule'] ?? [];
         $normalized = $this->normalizeGeneratedPlan(['schedule' => $schedule, 'strategy_summary' => $gp['strategy_summary'] ?? '']);
-        $normalizedSchedule = $normalized['schedule'] ?? [];
-
-        $shouldPersist = (empty($gp['weeks']) && ! empty($weeks)) || ($currentWeek['schedule'] ?? null) !== $normalizedSchedule;
-        if ($shouldPersist) {
-            $weeks[$weekIndex] = array_merge($currentWeek, ['schedule' => $normalizedSchedule]);
-            $gp['weeks'] = $weeks;
-            $plan->update(['generated_plan' => $gp]);
-        }
 
         $planArray = $plan->toArray();
-        $planArray['generated_plan'] = array_merge($gp, ['schedule' => $normalizedSchedule]);
+        $planArray['generated_plan'] = array_merge($gp, ['schedule' => $normalized['schedule']]);
 
         return $planArray;
     }
@@ -205,28 +197,28 @@ class StudyPlanService
         $recentSessions = $user->studySessions()
             ->where('started_at', '>=', Carbon::now()->subDays(7))
             ->get();
-
+        
         $recentQuizzes = $user->quizResults()
             ->where('taken_at', '>=', Carbon::now()->subDays(7))
             ->get();
 
         // 1. Analyze performance
         $hasPerformanceData = $recentSessions->isNotEmpty() || $recentQuizzes->isNotEmpty();
-
-        if (! $hasPerformanceData) {
+        
+        if (!$hasPerformanceData) {
             // If no performance data, create a gentle optimization that preserves beginner topics
-            $analysis = (object) [
+            $analysis = (object)[
                 'insights' => [
                     [
                         'detail' => 'No performance data available. Preserving current topic progression.',
-                        'significance' => 'Beginner topics should remain at appropriate difficulty level.',
-                    ],
+                        'significance' => 'Beginner topics should remain at appropriate difficulty level.'
+                    ]
                 ],
                 'subject_mastery' => [],
                 'recommendations' => [
                     'Continue with current topic progression.',
-                    'Re-balance recommended after 1-2 weeks of study data.',
-                ],
+                    'Re-balance recommended after 1-2 weeks of study data.'
+                ]
             ];
         } else {
             $analysis = $this->neuron->analyzer()->analyze([
@@ -239,7 +231,7 @@ class StudyPlanService
         // 2. Optimize plan
         $optimizationData = [
             'current_plan' => $activePlan->generated_plan,
-            'analysis_insights' => (array) $analysis,
+            'analysis_insights' => (array)$analysis,
             'current_day' => Carbon::today()->format('l'),
             'current_date' => Carbon::today()->toDateString(),
             'user_subjects' => $user->subjects,
@@ -250,12 +242,12 @@ class StudyPlanService
             'learning_style' => $user->learning_style,
             'has_performance_data' => $hasPerformanceData,
         ];
-
+        
         $optimization = $this->neuron->optimizer()->optimize($optimizationData);
 
         // 3. Persist new plan (with weeks structure for weekly rollover)
         return DB::transaction(function () use ($user, $activePlan, $optimization) {
-            StudyPlan::query()->whereKey($activePlan->id)->update(['status' => 'archived']);
+            $activePlan->update(['status' => 'archived']);
 
             $startsOn = Carbon::today();
             $normalized = $this->normalizeGeneratedPlan([
@@ -296,7 +288,6 @@ class StudyPlanService
         }
 
         $max = $dates->max();
-
         return $max->isBefore($startsOn) ? $startsOn->copy()->addWeeks(4) : $max;
     }
 
@@ -341,7 +332,6 @@ class StudyPlanService
 
         $plan['schedule'] = $normalized;
         unset($plan['optimized_schedule']);
-
         return $plan;
     }
 
@@ -354,7 +344,9 @@ class StudyPlanService
         if (is_array($dayData)) {
             $raw = $dayData['sessions'] ?? $dayData;
         }
-        if (! is_array($raw)) {
+        if (is_array($raw)) {
+            $raw = $raw;
+        } else {
             $raw = [];
         }
 
@@ -383,7 +375,7 @@ class StudyPlanService
                     if (is_string($resource)) {
                         $trimmed = trim($resource);
                         if ($trimmed !== '') {
-                            $normalizedResources[] = ['title' => $trimmed, 'url' => $trimmed, 'type' => ''];
+                            $normalizedResources[] = ['title' => $trimmed, 'url' => $this->sanitizeResourceUrl($trimmed, $trimmed, ''), 'type' => ''];
                         }
                         continue;
                     }
@@ -392,16 +384,38 @@ class StudyPlanService
                     }
                     $title = (string) ($resource['title'] ?? $resource['name'] ?? $resource['label'] ?? '');
                     $url = (string) ($resource['url'] ?? $resource['link'] ?? '');
+                    
+                    // Handle AI-generated "site:domain.com Title text" format in title
+                    if (str_contains($title, 'site:')) {
+                        if (preg_match('/site:([^\s]+)/', $title, $matches)) {
+                            $domain = $matches[1];
+                            $url = 'https://' . $domain;
+                            $title = trim(preg_replace('/site:[^\s]+\s*/', '', $title));
+                        }
+                    }
+                    
+                    // Handle "site:domain.com" in URL field
+                    if (str_contains($url, 'site:')) {
+                        if (preg_match('/site:([^\s]+)/', $url, $matches)) {
+                            $domain = $matches[1];
+                            $url = 'https://' . $domain;
+                        }
+                    }
+                    
                     if ($title === '' && $url !== '') {
                         $title = $url;
                     }
                     if ($url === '' && $title !== '') {
                         $url = $title;
                     }
+                    
+                    $url = $this->sanitizeResourceUrl($url, $title, '');
+                    
+                    $type = (string) ($resource['type'] ?? $resource['kind'] ?? '');
                     $normalizedResources[] = [
                         'title' => $title,
                         'url' => $url,
-                        'type' => (string) ($resource['type'] ?? $resource['kind'] ?? ''),
+                        'type' => $type,
                     ];
                 }
                 $resources = $normalizedResources;
@@ -423,7 +437,6 @@ class StudyPlanService
                     'key_topics' => $keyTopics,
                     'resources' => $resources,
                 ];
-
                 continue;
             }
             if (is_string($s)) {
@@ -451,7 +464,7 @@ class StudyPlanService
                             if (is_string($resource)) {
                                 $trimmed = trim($resource);
                                 if ($trimmed !== '') {
-                                    $normalizedResources[] = ['title' => $trimmed, 'url' => $trimmed, 'type' => ''];
+                                    $normalizedResources[] = ['title' => $trimmed, 'url' => $this->sanitizeResourceUrl($trimmed, $trimmed, ''), 'type' => ''];
                                 }
                                 continue;
                             }
@@ -460,16 +473,38 @@ class StudyPlanService
                             }
                             $title = (string) ($resource['title'] ?? $resource['name'] ?? $resource['label'] ?? '');
                             $url = (string) ($resource['url'] ?? $resource['link'] ?? '');
+                            
+                            // Handle AI-generated "site:domain.com Title text" format in title
+                            if (str_contains($title, 'site:')) {
+                                if (preg_match('/site:([^\s]+)/', $title, $matches)) {
+                                    $domain = $matches[1];
+                                    $url = 'https://' . $domain;
+                                    $title = trim(preg_replace('/site:[^\s]+\s*/', '', $title));
+                                }
+                            }
+                            
+                            // Handle "site:domain.com" in URL field
+                            if (str_contains($url, 'site:')) {
+                                if (preg_match('/site:([^\s]+)/', $url, $matches)) {
+                                    $domain = $matches[1];
+                                    $url = 'https://' . $domain;
+                                }
+                            }
+                            
                             if ($title === '' && $url !== '') {
                                 $title = $url;
                             }
                             if ($url === '' && $title !== '') {
                                 $url = $title;
                             }
+                            
+                            $url = $this->sanitizeResourceUrl($url, $title, '');
+                            
+                            $type = (string) ($resource['type'] ?? $resource['kind'] ?? '');
                             $normalizedResources[] = [
                                 'title' => $title,
                                 'url' => $url,
-                                'type' => (string) ($resource['type'] ?? $resource['kind'] ?? ''),
+                                'type' => $type,
                             ];
                         }
                         $resources = $normalizedResources;
@@ -491,7 +526,6 @@ class StudyPlanService
                             'key_topics' => $keyTopics,
                             'resources' => $resources,
                         ];
-
                         continue;
                     }
                 }
@@ -505,11 +539,9 @@ class StudyPlanService
                     'key_topics' => $this->defaultKeyTopics($subjectVal, $topicVal),
                     'resources' => $this->defaultResources($subjectVal),
                 ];
-
                 continue;
             }
         }
-
         return $out;
     }
 
@@ -526,65 +558,173 @@ class StudyPlanService
     protected function defaultResources(string $subject): array
     {
         $name = strtolower($subject);
-        $youtube = 'https://www.youtube.com/results?search_query='.rawurlencode($subject);
-        $docs = 'https://www.google.com/search?q='.rawurlencode($subject.' documentation');
-        if (str_contains($name, 'math')) {
+
+        if (str_contains($name, 'math') || str_contains($name, 'calculus') || str_contains($name, 'algebra') || str_contains($name, 'geometry') || str_contains($name, 'statistics')) {
             return [
-                ['title' => 'Khan Academy Math', 'url' => 'https://www.khanacademy.org/math', 'type' => 'course'],
-                ['title' => "Paul's Online Math Notes", 'url' => 'https://tutorial.math.lamar.edu/', 'type' => 'article'],
-                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+                ['title' => 'Khan Academy – Math', 'url' => 'https://www.khanacademy.org/math', 'type' => 'course'],
+                ['title' => '3Blue1Brown', 'url' => 'https://www.youtube.com/@3blue1brown', 'type' => 'video'],
+                ['title' => 'Paul\'s Online Math Notes', 'url' => 'https://tutorial.math.lamar.edu/', 'type' => 'article'],
+                ['title' => 'MIT OCW', 'url' => 'https://www.youtube.com/@mitocw', 'type' => 'video'],
             ];
         }
         if (str_contains($name, 'physics')) {
             return [
-                ['title' => 'MIT OCW Physics I', 'url' => 'https://ocw.mit.edu/courses/8-01sc-classical-mechanics-fall-2016/', 'type' => 'course'],
+                ['title' => 'Khan Academy – Physics', 'url' => 'https://www.khanacademy.org/science/physics', 'type' => 'course'],
                 ['title' => 'The Physics Classroom', 'url' => 'https://www.physicsclassroom.com/', 'type' => 'article'],
-                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+                ['title' => 'Physics Videos', 'url' => 'https://www.youtube.com/results?search_query=physics+lectures', 'type' => 'video'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
             ];
         }
-        if (str_contains($name, 'typescript')) {
+        if (str_contains($name, 'chemistry')) {
             return [
-                ['title' => 'TypeScript Handbook', 'url' => 'https://www.typescriptlang.org/docs/', 'type' => 'article'],
-                ['title' => 'MDN TypeScript Guide', 'url' => 'https://developer.mozilla.org/en-US/docs/Web/TypeScript', 'type' => 'article'],
-                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+                ['title' => 'Khan Academy – Chemistry', 'url' => 'https://www.khanacademy.org/science/chemistry', 'type' => 'course'],
+                ['title' => 'Professor Dave Explains', 'url' => 'https://www.youtube.com/@ProfessorDaveExplains', 'type' => 'video'],
+                ['title' => 'LibreTexts Chemistry', 'url' => 'https://chem.libretexts.org/', 'type' => 'article'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
             ];
         }
-        if (str_contains($name, 'machine learning')) {
+        if (str_contains($name, 'biology')) {
             return [
-                ['title' => 'Stanford CS229 Notes', 'url' => 'https://cs229.stanford.edu/notes2022fall', 'type' => 'article'],
-                ['title' => 'Andrew Ng ML Course', 'url' => 'https://www.coursera.org/learn/machine-learning', 'type' => 'course'],
-                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+                ['title' => 'Khan Academy – Biology', 'url' => 'https://www.khanacademy.org/science/biology', 'type' => 'course'],
+                ['title' => 'Amoeba Sisters', 'url' => 'https://www.youtube.com/@AmoebaSisters', 'type' => 'video'],
+                ['title' => 'LibreTexts Biology', 'url' => 'https://bio.libretexts.org/', 'type' => 'article'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
             ];
         }
-        if (str_contains($name, 'data science')) {
+        if (str_contains($name, 'python')) {
+            return [
+                ['title' => 'Python Official Docs', 'url' => 'https://docs.python.org/3/', 'type' => 'article'],
+                ['title' => 'freeCodeCamp – Python', 'url' => 'https://www.freecodecamp.org/learn/scientific-computing-with-python/', 'type' => 'course'],
+                ['title' => 'Corey Schafer', 'url' => 'https://www.youtube.com/@coreyms', 'type' => 'video'],
+                ['title' => 'Programming with Mosh', 'url' => 'https://www.youtube.com/@programmingwithmosh', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'javascript') || str_contains($name, 'typescript')) {
+            return [
+                ['title' => 'MDN Web Docs', 'url' => 'https://developer.mozilla.org/en-US/docs/Web/JavaScript', 'type' => 'article'],
+                ['title' => 'freeCodeCamp – JavaScript', 'url' => 'https://www.freecodecamp.org/learn/javascript-algorithms-and-data-structures-v8/', 'type' => 'course'],
+                ['title' => 'Traversy Media', 'url' => 'https://www.youtube.com/@TraversyMedia', 'type' => 'video'],
+                ['title' => 'Fireship', 'url' => 'https://www.youtube.com/@Fireship', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'programming') || str_contains($name, 'computer') || str_contains($name, 'coding') || str_contains($name, 'java') || str_contains($name, 'c++') || str_contains($name, 'c#')) {
+            return [
+                ['title' => 'freeCodeCamp', 'url' => 'https://www.freecodecamp.org/', 'type' => 'course'],
+                ['title' => 'GeeksforGeeks', 'url' => 'https://www.geeksforgeeks.org/', 'type' => 'article'],
+                ['title' => 'CS50', 'url' => 'https://www.youtube.com/@cs50', 'type' => 'video'],
+                ['title' => 'Computerphile', 'url' => 'https://www.youtube.com/@Computerphile', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'machine learning') || str_contains($name, 'deep learning')) {
+            return [
+                ['title' => 'Andrew Ng – ML Course', 'url' => 'https://www.coursera.org/learn/machine-learning', 'type' => 'course'],
+                ['title' => 'fast.ai Practical Deep Learning', 'url' => 'https://course.fast.ai/', 'type' => 'course'],
+                ['title' => 'StatQuest', 'url' => 'https://www.youtube.com/@statquest', 'type' => 'video'],
+                ['title' => '3Blue1Brown', 'url' => 'https://www.youtube.com/@3blue1brown', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'data science') || str_contains($name, 'ai')) {
             return [
                 ['title' => 'Kaggle Learn', 'url' => 'https://www.kaggle.com/learn', 'type' => 'course'],
-                ['title' => 'DataCamp Tutorials', 'url' => 'https://www.datacamp.com/tutorials', 'type' => 'article'],
-                ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-                ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+                ['title' => 'Google AI Education', 'url' => 'https://ai.google/education/', 'type' => 'course'],
+                ['title' => 'StatQuest', 'url' => 'https://www.youtube.com/@statquest', 'type' => 'video'],
+                ['title' => 'Data Science Dojo', 'url' => 'https://www.youtube.com/@DataScienceDojo', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'history')) {
+            return [
+                ['title' => 'Khan Academy – History', 'url' => 'https://www.khanacademy.org/humanities/world-history', 'type' => 'course'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+                ['title' => 'History.com', 'url' => 'https://www.history.com/', 'type' => 'article'],
+                ['title' => 'Extra History', 'url' => 'https://www.youtube.com/@Extrahistory', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'economics')) {
+            return [
+                ['title' => 'Khan Academy – Economics', 'url' => 'https://www.khanacademy.org/economics-finance-domain', 'type' => 'course'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+                ['title' => 'Investopedia', 'url' => 'https://www.investopedia.com/', 'type' => 'article'],
+                ['title' => 'Economics Explained', 'url' => 'https://www.youtube.com/@EconomicsExplained', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'psychology')) {
+            return [
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+                ['title' => 'Simply Psychology', 'url' => 'https://www.simplypsychology.org/', 'type' => 'article'],
+                ['title' => 'Khan Academy – Health & Medicine', 'url' => 'https://www.khanacademy.org/science/health-and-medicine', 'type' => 'course'],
+                ['title' => 'The School of Life', 'url' => 'https://www.youtube.com/@theschooloflifetv', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'english') || str_contains($name, 'literature') || str_contains($name, 'writing')) {
+            return [
+                ['title' => 'Khan Academy – Grammar', 'url' => 'https://www.khanacademy.org/humanities/grammar', 'type' => 'course'],
+                ['title' => 'Purdue OWL', 'url' => 'https://owl.purdue.edu/', 'type' => 'article'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+                ['title' => 'English with Lucy', 'url' => 'https://www.youtube.com/@EnglishwithLucy', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'geography')) {
+            return [
+                ['title' => 'National Geographic Education', 'url' => 'https://education.nationalgeographic.org/', 'type' => 'article'],
+                ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+                ['title' => 'Khan Academy – World History', 'url' => 'https://www.khanacademy.org/humanities/world-history', 'type' => 'course'],
+                ['title' => 'Geography Now', 'url' => 'https://www.youtube.com/@GeographyNow', 'type' => 'video'],
+            ];
+        }
+        if (str_contains($name, 'language') || str_contains($name, 'spanish') || str_contains($name, 'french') || str_contains($name, 'german') || str_contains($name, 'chinese') || str_contains($name, 'japanese') || str_contains($name, 'korean')) {
+            return [
+                ['title' => 'Duolingo', 'url' => 'https://www.duolingo.com/', 'type' => 'course'],
+                ['title' => 'BBC Languages', 'url' => 'https://www.bbc.co.uk/languages', 'type' => 'article'],
+                ['title' => 'Language Learning YouTube', 'url' => 'https://www.youtube.com/c/LanguageLearning', 'type' => 'video'],
+                ['title' => 'Forvo Pronunciation', 'url' => 'https://forvo.com/', 'type' => 'tool'],
             ];
         }
         return [
-            ['title' => 'Wikipedia Overview', 'url' => 'https://en.wikipedia.org', 'type' => 'article'],
-            ['title' => 'YouTube Search', 'url' => $youtube, 'type' => 'video'],
-            ['title' => 'Documentation Search', 'url' => $docs, 'type' => 'article'],
+            ['title' => 'Khan Academy', 'url' => 'https://www.khanacademy.org/', 'type' => 'course'],
+            ['title' => 'CrashCourse', 'url' => 'https://www.youtube.com/@crashcourse', 'type' => 'video'],
+            ['title' => 'Wikipedia', 'url' => 'https://en.wikipedia.org/wiki/Main_Page', 'type' => 'article'],
+            ['title' => 'TED-Ed', 'url' => 'https://www.youtube.com/@TEDEd', 'type' => 'video'],
         ];
+    }
+
+    /**
+     * Sanitize a resource URL - ensure it's valid, but don't redirect to search.
+     * Returns the URL as-is if valid, or converts to YouTube search if invalid.
+     */
+    protected function sanitizeResourceUrl(string $url, string $title, string $type): string
+    {
+        $url = trim($url);
+
+        // AI sometimes generates "site:domain.com Title text" as the URL
+        // Extract just the domain from site: patterns
+        if (str_contains($url, 'site:')) {
+            // Pattern: "site:domain.com" or "site:domain.com Title"
+            if (preg_match('/site:([^\s]+)/', $url, $matches)) {
+                $domain = $matches[1];
+                // Ensure https:// prefix
+                if (!str_starts_with($domain, 'http')) {
+                    return 'https://' . $domain;
+                }
+                return $domain;
+            }
+        }
+
+        // Not a valid URL at all — convert title to YouTube search
+        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+            return 'https://www.youtube.com/results?search_query=' . rawurlencode($title . ' tutorial');
+        }
+
+        // Valid URL — return as-is (user goes directly to the page)
+        return $url;
     }
 
     protected function parseDuration(mixed $val): int
     {
-        if ($val === null) {
-            return 60;
-        }
+        if ($val === null) return 60;
 
         // If explicitly numeric
         if (is_numeric($val)) {
             $intVal = (int) $val;
-
             // Heuristic: If value is <= 12, assume it's hours and convert to minutes.
             // It is extremely unlikely a study session is 1 to 12 minutes long.
             return $intVal > 0 && $intVal <= 12 ? $intVal * 60 : $intVal;
@@ -598,7 +738,6 @@ class StudyPlanService
             }
             // Fallback: try parsing as int
             $parsed = (int) $cleaned;
-
             return $this->parseDuration($parsed);
         }
 

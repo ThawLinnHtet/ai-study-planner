@@ -35,12 +35,30 @@ export function useSubjects() {
         setError(null);
 
         try {
-            const response = await fetch(`/api/subjects?q=${encodeURIComponent(query)}&limit=20`);
+            const response = await fetch(`/api/subjects/search?q=${encodeURIComponent(query)}&limit=20`);
             if (!response.ok) {
                 throw new Error('Failed to fetch subjects');
             }
-            const data: SubjectsResponse = await response.json();
-            setSubjects(data);
+            const apiResponse = await response.json();
+
+            // Convert API response { subjects: [...] } to expected format { global: [...], custom: [] }
+            const subjects = apiResponse.subjects || [];
+            const formattedData: SubjectsResponse = {
+                global: subjects.map((name: string) => ({
+                    id: Math.random(), // Temporary ID
+                    name,
+                    slug: name.toLowerCase().replace(/\s+/g, '-'),
+                    description: '',
+                    category: 'General',
+                    icon: 'book-open',
+                    color: '#6366f1',
+                    usage_count: 0,
+                    is_custom: false
+                })),
+                custom: []
+            };
+
+            setSubjects(formattedData);
         } catch (err) {
             setError(err instanceof Error ? err.message : 'An error occurred');
             setSubjects({ global: [], custom: [] });
@@ -59,8 +77,6 @@ export function useSubjects() {
                 },
                 body: JSON.stringify({
                     name: name.trim(),
-                    description: description?.trim(),
-                    category: category?.trim(),
                 }),
             });
 
@@ -70,7 +86,17 @@ export function useSubjects() {
             }
 
             const result = await response.json();
-            return result.subject;
+            return {
+                id: Math.random(), // Temporary ID
+                name: result.subject.name,
+                slug: result.subject.name.toLowerCase().replace(/\s+/g, '-'),
+                description: description?.trim() || '',
+                category: category?.trim() || 'Custom',
+                icon: 'book-open',
+                color: '#6366f1',
+                usage_count: 0,
+                is_custom: true
+            };
         } catch (err) {
             throw new Error(err instanceof Error ? err.message : 'Failed to add subject');
         }
