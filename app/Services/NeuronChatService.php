@@ -347,10 +347,11 @@ class NeuronChatService
             "- If topic is NOT in their subjects, respond with this format:\n".
 "  'That topic isn't part of your study plan.\\n\\n'.\n".
 "  'Your subjects are:\\n'.\n".
-"  '• AWS SAA\\n'.\n".
-"  '• Machine Learning\\n'.\n".
-"  '• TypeScript\\n\\n'.\n".
-"  'Would you like help with today's topic instead?'\n".
+"  '• Math\\n'.\n".
+"  '• Physics\\n'.\n".
+"  '• Chemistry\\n\\n'.\n".
+"  'Would you like help with today's topic instead?'\n\n".
+"IMPORTANT: Replace 'Math', 'Physics', 'Chemistry' above with the actual subjects from the user's subjects array in the context.\n".
             "- NEVER use general knowledge outside their enrolled subjects\n".
             "- NEVER answer random questions unrelated to their studies\n".
             "- Stay in your role as their personal study tutor\n\n".
