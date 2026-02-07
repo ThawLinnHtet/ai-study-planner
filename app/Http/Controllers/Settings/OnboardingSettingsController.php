@@ -68,7 +68,7 @@ class OnboardingSettingsController extends Controller
             'exam_dates.*' => ['nullable', 'date'],
             'subject_difficulties' => ['nullable', 'array'],
             'subject_difficulties.*' => ['nullable', 'integer', 'min:1', 'max:3'],
-            'daily_study_hours' => ['required', 'integer', 'min:1', 'max:16'],
+            'daily_study_hours' => ['required', 'integer', 'min:1', 'max:6'],
             'productivity_peak' => ['required', 'string', 'in:morning,afternoon,evening,night'],
             'learning_style' => ['required', 'array', 'min:1'],
             'learning_style.*' => ['required', 'string', 'in:visual,auditory,reading,kinesthetic'],
@@ -78,7 +78,7 @@ class OnboardingSettingsController extends Controller
         ], [
             'subjects.required' => 'Please select at least one subject.',
             'daily_study_hours.min' => 'Study time must be at least 1 hour per day.',
-            'daily_study_hours.max' => 'Study time cannot exceed 16 hours per day.',
+            'daily_study_hours.max' => 'Study time cannot exceed 6 hours per day for optimal learning.',
             'productivity_peak.required' => 'Please select your peak productivity time.',
             'learning_style.required' => 'Please select at least one learning style.',
         ]);

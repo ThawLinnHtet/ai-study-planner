@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import OnboardingLayout from '@/layouts/onboarding-layout';
@@ -672,37 +673,23 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                             Hours per day
                                                         </Label>
 
-                                                        <div className="flex items-center gap-3">
-                                                            <input
-                                                                id="daily_study_hours"
-                                                                type="range"
-                                                                min={1}
-                                                                max={12}
-                                                                value={
-                                                                    form.data.daily_study_hours ||
-                                                                    1
-                                                                }
-                                                                onChange={(e) =>
-                                                                    form.setData(
-                                                                        'daily_study_hours',
-                                                                        Number(
-                                                                            e.target.value,
-                                                                        ),
-                                                                    )
-                                                                }
-                                                                className="w-full"
-                                                            />
-                                                            <div className="w-16 text-right text-sm font-medium">
-                                                                {form.data.daily_study_hours ||
-                                                                    1}
-                                                            </div>
-                                                        </div>
-
-                                                        <InputError
-                                                            message={
-                                                                form.errors.daily_study_hours
+                                                        <Select
+                                                            value={form.data.daily_study_hours?.toString() || '2'}
+                                                            onValueChange={(value) =>
+                                                                form.setData('daily_study_hours', Number(value))
                                                             }
-                                                        />
+                                                        >
+                                                            <SelectTrigger className="w-32">
+                                                                <SelectValue placeholder="Select hours" />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {[1, 2, 3, 4, 5, 6].map((hour) => (
+                                                                    <SelectItem key={hour} value={hour.toString()}>
+                                                                        {hour} {hour === 1 ? 'hour' : 'hours'}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
                                                     </div>
 
                                                     <div className="space-y-4 pt-4 border-t border-border">

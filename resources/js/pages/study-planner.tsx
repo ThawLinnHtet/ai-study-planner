@@ -88,6 +88,7 @@ interface CompletedSession {
 interface Props {
     plan?: Plan;
     completedSessions: CompletedSession[];
+    examDates: Record<string, string | null>;
     progress: {
         xp: {
             total: number;
@@ -118,7 +119,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
-export default function StudyPlanner({ plan, completedSessions, progress }: Props) {
+export default function StudyPlanner({ plan, completedSessions, examDates, progress }: Props) {
     const [selectedDate, setSelectedDate] = useState(startOfDay(new Date()));
     const [viewMode, setViewMode] = useState<'month' | 'week'>('week');
     const [hoveredWeek, setHoveredWeek] = useState<number | null>(null);
@@ -216,6 +217,21 @@ export default function StudyPlanner({ plan, completedSessions, progress }: Prop
         });
     };
 
+    // Calculate days until exam for a subject
+    const getExamInfo = (subject: string): { daysUntil: number | null; isNear: boolean } => {
+        const examDate = examDates[subject];
+        if (!examDate) return { daysUntil: null, isNear: false };
+
+        const today = new Date();
+        const exam = new Date(examDate);
+        const diffTime = exam.getTime() - today.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        return {
+            daysUntil: diffDays,
+            isNear: diffDays > 0 && diffDays <= 14
+        };
+    };
 
     const handleRebalance = () => {
         if (confirm('Neuron AI will analyze your recent progress and re-adjust your future schedule. Continue?')) {
@@ -854,6 +870,20 @@ export default function StudyPlanner({ plan, completedSessions, progress }: Prop
                                                                 )}>
                                                                     {subj}
                                                                 </h4>
+                                                                {(() => {
+                                                                    const examInfo = getExamInfo(subj);
+                                                                    if (examInfo.isNear) {
+                                                                        return (
+                                                                            <div className="flex items-center gap-1.5 text-sm font-medium">
+                                                                                <Badge variant="destructive" className="animate-pulse">
+                                                                                    <Target className="w-3 h-3 mr-1" />
+                                                                                    Exam in {examInfo.daysUntil} days
+                                                                                </Badge>
+                                                                            </div>
+                                                                        );
+                                                                    }
+                                                                    return null;
+                                                                })()}
                                                                 {session.focus_level === 'high' && (
                                                                     <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium animate-pulse">
                                                                         <Sparkles className="w-3.5 h-3.5" />

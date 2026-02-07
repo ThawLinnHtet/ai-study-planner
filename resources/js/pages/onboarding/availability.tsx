@@ -137,25 +137,25 @@ export default function OnboardingAvailability() {
                                 <Label htmlFor="daily_study_hours">
                                     Daily study hours
                                 </Label>
-                                <Input
-                                    id="daily_study_hours"
-                                    name="daily_study_hours"
-                                    type="number"
-                                    min={1}
-                                    max={24}
-                                    value={form.data.daily_study_hours}
-                                    onChange={(e) =>
-                                        form.setData(
-                                            'daily_study_hours',
-                                            Number(e.target.value),
-                                        )
+                                <Select
+                                    value={form.data.daily_study_hours.toString()}
+                                    onValueChange={(value) =>
+                                        form.setData('daily_study_hours', Number(value))
                                     }
-                                />
-                                <InputError
-                                    message={form.errors.daily_study_hours}
-                                />
+                                >
+                                    <SelectTrigger className="w-32">
+                                        <SelectValue placeholder="Select hours" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {[1, 2, 3, 4, 5, 6].map((hour) => (
+                                            <SelectItem key={hour} value={hour.toString()}>
+                                                {hour} {hour === 1 ? 'hour' : 'hours'}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                                 <p className="text-sm text-gray-600">
-                                    Recommended: 1-6 hours for optimal focus and retention. Maximum: 12 hours.
+                                    Recommended: 1-6 hours for optimal focus and retention. Maximum: 6 hours.
                                 </p>
                             </div>
 

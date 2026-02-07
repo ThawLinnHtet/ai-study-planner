@@ -22,7 +22,7 @@ class StudyHoursValidator
      */
     const RECOMMENDED_MIN_HOURS = 1;
 
-    const ABSOLUTE_MAX_HOURS = 12;
+    const ABSOLUTE_MAX_HOURS = 6;
 
     /**
      * Validate and adjust study hours based on focus capacity

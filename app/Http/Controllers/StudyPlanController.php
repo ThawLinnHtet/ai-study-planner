@@ -164,6 +164,7 @@ class StudyPlanController extends Controller
             'plan' => $plan,
             'completedSessions' => $recentSessions,
             'progress' => $this->progress->getStats($user, 14),
+            'examDates' => $user->exam_dates ?? [],
         ]);
     }
 

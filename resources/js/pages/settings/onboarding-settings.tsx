@@ -423,21 +423,24 @@ export default function OnboardingSettings({ user }: Props) {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <Label htmlFor="daily_study_hours">Daily Study Hours</Label>
-                                    <Input
-                                        id="daily_study_hours"
-                                        type="number"
-                                        min="1"
-                                        max="16"
-                                        value={form.data.daily_study_hours}
-                                        onChange={(e) => form.setData('daily_study_hours', parseInt(e.target.value))}
-                                        placeholder="e.g., 4"
-                                    />
+                                    <Select
+                                        value={form.data.daily_study_hours.toString()}
+                                        onValueChange={(value) => form.setData('daily_study_hours', parseInt(value))}
+                                    >
+                                        <SelectTrigger className="w-32">
+                                            <SelectValue placeholder="Select hours" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {[1, 2, 3, 4, 5, 6].map((hour) => (
+                                                <SelectItem key={hour} value={hour.toString()}>
+                                                    {hour} {hour === 1 ? 'hour' : 'hours'}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <p className="text-xs text-muted-foreground mt-1">
                                         Recommended: 2-6 hours for optimal learning
                                     </p>
-                                    {form.errors.daily_study_hours && (
-                                        <p className="text-sm text-destructive">{form.errors.daily_study_hours}</p>
-                                    )}
                                 </div>
 
                                 <div>

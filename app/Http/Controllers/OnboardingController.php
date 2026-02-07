@@ -180,7 +180,7 @@ class OnboardingController extends Controller
                     'nullable',
                     'integer',
                     'min:1',
-                    'max:16',
+                    'max:6',
                 ],
                 'productivity_peak' => [
                     'nullable',
@@ -188,7 +188,7 @@ class OnboardingController extends Controller
                     'in:morning,afternoon,evening,night',
                 ],
             ], [
-                'daily_study_hours.max' => 'Please enter a realistic study time (maximum 16 hours per day).',
+                'daily_study_hours.max' => 'Please enter a realistic study time (maximum 6 hours per day).',
                 'daily_study_hours.min' => 'Please enter at least 1 hour per day.',
             ]);
 
