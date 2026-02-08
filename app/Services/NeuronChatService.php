@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\AiMessage;
+use App\Models\ChatThread;
+use App\Models\ChatMessage;
 use App\Models\StudyPlan;
 use App\Models\StudySession;
 use App\Models\User;
@@ -17,102 +19,138 @@ class NeuronChatService
     ) {
     }
 
-    public function newThreadId(): string
+    /**
+     * Create a new chat thread for a user.
+     */
+    public function createThread(User $user, ?string $title = null): ChatThread
     {
-        return (string) Str::uuid();
+        $providerThreadId = (string) Str::uuid();
+
+        return ChatThread::create([
+            'user_id' => $user->id,
+            'provider_thread_id' => $providerThreadId,
+            'title' => $title ?? 'New Chat',
+            'metadata' => [],
+        ]);
     }
 
+    /**
+     * Validate thread ownership - ensures user owns the thread.
+     */
+    private function validateThreadOwnership(User $user, int $threadId): ChatThread
+    {
+        $thread = ChatThread::where('id', $threadId)
+            ->where('user_id', $user->id)
+            ->first();
+
+        if (! $thread) {
+            throw new \RuntimeException('Thread not found or access denied.', 403);
+        }
+
+        return $thread;
+    }
+
+    /**
+     * List all threads for a user.
+     */
     public function listThreads(User $user, int $limit = 20): array
     {
-        $rows = AiMessage::query()
-            ->selectRaw('thread_id, MAX(created_at) as last_at')
-            ->where('user_id', $user->id)
-            ->whereNull('deleted_at')
-            ->groupBy('thread_id')
-            ->orderByDesc('last_at')
+        $threads = ChatThread::where('user_id', $user->id)
+            ->orderByDesc('last_message_at')
             ->limit($limit)
             ->get();
 
-        $threads = [];
-        foreach ($rows as $row) {
-            $last = AiMessage::query()
-                ->where('user_id', $user->id)
-                ->where('thread_id', $row->thread_id)
-                ->whereNull('deleted_at')
-                ->orderByDesc('created_at')
-                ->first(['content', 'created_at']);
-
-            if (! $last) {
-                continue;
-            }
-
-            $threads[] = [
-                'thread_id' => $row->thread_id,
-                'updated_at' => $last->created_at?->toIso8601String(),
-                'preview' => Str::limit((string) $last->content, 80),
-            ];
-        }
-
-        return $threads;
+        return $threads->map(fn (ChatThread $thread) => [
+            'thread_id' => $thread->id,
+            'provider_thread_id' => $thread->provider_thread_id,
+            'title' => $thread->title,
+            'updated_at' => $thread->last_message_at?->toIso8601String() ?? $thread->updated_at->toIso8601String(),
+            'preview' => $this->getThreadPreview($thread),
+        ])->all();
     }
 
-    public function getThreadMessages(User $user, string $threadId, int $limit = 50): array
+    /**
+     * Get preview text from the last message in a thread.
+     */
+    private function getThreadPreview(ChatThread $thread): string
     {
-        return AiMessage::query()
-            ->where('user_id', $user->id)
-            ->where('thread_id', $threadId)
-            ->whereNull('deleted_at')
+        $lastMessage = $thread->messages()->orderByDesc('created_at')->first();
+        
+        if (! $lastMessage) {
+            return 'No messages yet';
+        }
+
+        return Str::limit((string) $lastMessage->content, 80);
+    }
+
+    /**
+     * Get messages for a specific thread.
+     */
+    public function getThreadMessages(User $user, int $threadId, int $limit = 50): array
+    {
+        $thread = $this->validateThreadOwnership($user, $threadId);
+
+        return $thread->messages()
             ->orderBy('created_at')
             ->limit($limit)
             ->get(['id', 'role', 'content', 'created_at'])
-            ->map(fn ($m) => [
-                'id' => $m->id,
-                'role' => $m->role,
-                'content' => $m->content,
-                'created_at' => $m->created_at?->toIso8601String(),
+            ->map(fn (ChatMessage $message) => [
+                'id' => $message->id,
+                'role' => $message->role,
+                'content' => $message->content,
+                'created_at' => $message->created_at?->toIso8601String(),
             ])
             ->all();
     }
 
-    public function deleteThread(User $user, string $threadId): void
+    /**
+     * Delete a thread (soft delete via messages).
+     */
+    public function deleteThread(User $user, int $threadId): void
     {
-        // Soft delete - sets deleted_at timestamp
-        AiMessage::query()
-            ->where('user_id', $user->id)
-            ->where('thread_id', $threadId)
-            ->delete();
+        $thread = $this->validateThreadOwnership($user, $threadId);
+        
+        // Soft delete all messages in the thread
+        ChatMessage::where('chat_thread_id', $thread->id)->delete();
+        
+        // Soft delete the thread itself
+        $thread->delete();
     }
 
-    public function sendStream(User $user, string $message, ?string $threadId = null): \Generator
+    /**
+     * Send a message to a thread with streaming response.
+     */
+    public function sendStream(User $user, string $message, ?int $threadId = null): \Generator
     {
-        $threadId = $threadId ?: $this->newThreadId();
+        // Validate or create thread
+        if ($threadId) {
+            $thread = $this->validateThreadOwnership($user, $threadId);
+        } else {
+            $thread = $this->createThread($user, 'New Chat');
+            $threadId = $thread->id;
+        }
 
-        $activePlanId = StudyPlan::query()
-            ->where('user_id', $user->id)
-            ->where('status', 'active')
-            ->value('id');
-
-        AiMessage::create([
+        // Store user message
+        ChatMessage::create([
+            'chat_thread_id' => $thread->id,
             'user_id' => $user->id,
-            'study_plan_id' => $activePlanId,
-            'thread_id' => $threadId,
             'role' => 'user',
             'content' => $message,
-            'provider' => null,
-            'model' => null,
-            'meta' => null,
+            'metadata' => [],
         ]);
 
-        $history = AiMessage::query()
-            ->where('user_id', $user->id)
-            ->where('thread_id', $threadId)
-            ->whereNull('deleted_at')
+        // Update thread last message timestamp
+        $thread->update(['last_message_at' => Carbon::now()]);
+
+        // Get message history for context
+        $history = $thread->messages()
             ->orderByDesc('created_at')
             ->limit(20)
             ->get(['role', 'content'])
             ->reverse()
             ->values();
 
+        // Build AI context and messages
         $context = $this->buildContext($user);
         $system = $this->systemPrompt($context);
 
@@ -131,6 +169,17 @@ class NeuronChatService
             ];
         }
 
+        yield json_encode(['type' => 'thread_id', 'thread_id' => $threadId])."\n\n";
+
+        // Call AI API
+        $fullContent = '';
+        $key = (string) (config('services.openrouter.key') ?? '');
+        if ($key === '') {
+            throw new \RuntimeException('OpenRouter API key is not configured.');
+        }
+
+        $baseUrl = (string) (config('services.openrouter.base_url') ?? 'https://openrouter.ai/api/v1');
+
         $payload = [
             'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
             'messages' => $messages,
@@ -139,16 +188,6 @@ class NeuronChatService
             'stream' => true,
         ];
 
-        $key = (string) (config('services.openrouter.key') ?? '');
-        if ($key === '') {
-            throw new \RuntimeException('OpenRouter API key is not configured.');
-        }
-
-        $baseUrl = (string) (config('services.openrouter.base_url') ?? 'https://openrouter.ai/api/v1');
-
-        yield json_encode(['type' => 'thread_id', 'thread_id' => $threadId])."\n\n";
-
-        $fullContent = '';
         $client = new \GuzzleHttp\Client();
 
         try {
@@ -192,16 +231,17 @@ class NeuronChatService
                 }
             }
 
-            AiMessage::create([
+            // Store assistant response
+            ChatMessage::create([
+                'chat_thread_id' => $thread->id,
                 'user_id' => $user->id,
-                'study_plan_id' => $activePlanId,
-                'thread_id' => $threadId,
                 'role' => 'assistant',
                 'content' => $fullContent,
-                'provider' => 'openrouter',
-                'model' => (string) config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
-                'meta' => ['context' => $context],
+                'metadata' => ['context' => $context],
             ]);
+
+            // Update thread last message timestamp
+            $thread->update(['last_message_at' => Carbon::now()]);
 
             yield json_encode(['type' => 'done'])."\n\n";
         } catch (\Exception $e) {
@@ -209,38 +249,41 @@ class NeuronChatService
         }
     }
 
-    public function send(User $user, string $message, ?string $threadId = null): array
+    /**
+     * Send a non-streaming message.
+     */
+    public function send(User $user, string $message, ?int $threadId = null): array
     {
-        $threadId = $threadId ?: $this->newThreadId();
+        // Validate or create thread
+        if ($threadId) {
+            $thread = $this->validateThreadOwnership($user, $threadId);
+        } else {
+            $thread = $this->createThread($user, 'New Chat');
+            $threadId = $thread->id;
+        }
 
-        $activePlanId = StudyPlan::query()
-            ->where('user_id', $user->id)
-            ->where('status', 'active')
-            ->value('id');
-
-        AiMessage::create([
+        // Store user message
+        ChatMessage::create([
+            'chat_thread_id' => $thread->id,
             'user_id' => $user->id,
-            'study_plan_id' => $activePlanId,
-            'thread_id' => $threadId,
             'role' => 'user',
             'content' => $message,
-            'provider' => null,
-            'model' => null,
-            'meta' => null,
+            'metadata' => [],
         ]);
 
-        $history = AiMessage::query()
-            ->where('user_id', $user->id)
-            ->where('thread_id', $threadId)
-            ->whereNull('deleted_at')
+        // Update thread last message timestamp
+        $thread->update(['last_message_at' => Carbon::now()]);
+
+        // Get message history
+        $history = $thread->messages()
             ->orderByDesc('created_at')
             ->limit(20)
             ->get(['role', 'content'])
             ->reverse()
             ->values();
 
+        // Build context and messages
         $context = $this->buildContext($user);
-
         $system = $this->systemPrompt($context);
 
         $messages = [
@@ -258,13 +301,7 @@ class NeuronChatService
             ];
         }
 
-        $payload = [
-            'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
-            'messages' => $messages,
-            'temperature' => 0.4,
-            'max_tokens' => 800,
-        ];
-
+        // Call AI API
         $key = (string) (config('services.openrouter.key') ?? '');
         if ($key === '') {
             throw new \RuntimeException('OpenRouter API key is not configured.');
@@ -272,48 +309,50 @@ class NeuronChatService
 
         $baseUrl = (string) (config('services.openrouter.base_url') ?? 'https://openrouter.ai/api/v1');
 
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer '.$key,
-            'Content-Type' => 'application/json',
-            'HTTP-Referer' => (string) config('app.url'),
-            'X-Title' => (string) config('app.name'),
-        ])->post(rtrim($baseUrl, '/').'/chat/completions', $payload);
-
-        if ($response->failed()) {
-            throw new \RuntimeException('AI Request failed: '.$response->body());
-        }
-
-        $json = $response->json();
-        $assistantContent = (string) data_get($json, 'choices.0.message.content', '');
-
-        $usage = (array) (data_get($json, 'usage', []) ?? []);
-        $promptTokens = isset($usage['prompt_tokens']) ? (int) $usage['prompt_tokens'] : null;
-        $completionTokens = isset($usage['completion_tokens']) ? (int) $usage['completion_tokens'] : null;
-        $totalTokens = isset($usage['total_tokens']) ? (int) $usage['total_tokens'] : null;
-
-        AiMessage::create([
-            'user_id' => $user->id,
-            'study_plan_id' => $activePlanId,
-            'thread_id' => $threadId,
-            'role' => 'assistant',
-            'content' => $assistantContent,
-            'provider' => 'openrouter',
-            'model' => (string) config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
-            'prompt_tokens' => $promptTokens,
-            'completion_tokens' => $completionTokens,
-            'total_tokens' => $totalTokens,
-            'meta' => [
-                'context' => $context,
-            ],
-        ]);
-
-        return [
-            'thread_id' => $threadId,
-            'assistant' => [
-                'role' => 'assistant',
-                'content' => $assistantContent,
-            ],
+        $payload = [
+            'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
+            'messages' => $messages,
+            'temperature' => 0.4,
+            'max_tokens' => 800,
+            'stream' => false,
         ];
+
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$key,
+                'HTTP-Referer' => (string) config('app.url'),
+                'X-Title' => (string) config('app.name'),
+            ])->post(rtrim($baseUrl, '/').'/chat/completions', $payload);
+
+            if ($response->failed()) {
+                throw new \RuntimeException('AI service error: '.$response->body());
+            }
+
+            $data = $response->json();
+            $content = $data['choices'][0]['message']['content'] ?? 'Sorry, I could not generate a response.';
+
+            // Store assistant response
+            ChatMessage::create([
+                'chat_thread_id' => $thread->id,
+                'user_id' => $user->id,
+                'role' => 'assistant',
+                'content' => $content,
+                'metadata' => ['context' => $context],
+            ]);
+
+            // Update thread last message timestamp
+            $thread->update(['last_message_at' => Carbon::now()]);
+
+            return [
+                'thread_id' => $threadId,
+                'message' => $content,
+            ];
+        } catch (\Exception $e) {
+            return [
+                'thread_id' => $threadId,
+                'message' => 'Error: '.$e->getMessage(),
+            ];
+        }
     }
 
     protected function systemPrompt(array $context): string
@@ -499,7 +538,7 @@ class NeuronChatService
             ],
             'active_plan' => $planContext,
             'recent_sessions' => $recentSessions,
-            'generated_at' => Carbon::now()->toIso8601String(),
+            'generated_at' => now()->toIso8601String(),
         ];
     }
 }

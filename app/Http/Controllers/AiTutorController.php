@@ -15,8 +15,9 @@ class AiTutorController extends Controller
 
     public function newThread(Request $request): JsonResponse
     {
+        $thread = $this->chat->createThread($request->user(), 'New Chat');
         return response()->json([
-            'thread_id' => $this->chat->newThreadId(),
+            'thread_id' => $thread->id,
         ]);
     }
 
@@ -27,7 +28,7 @@ class AiTutorController extends Controller
         ]);
     }
 
-    public function messages(Request $request, string $threadId): JsonResponse
+    public function messages(Request $request, int $threadId): JsonResponse
     {
         return response()->json([
             'thread_id' => $threadId,
@@ -39,7 +40,7 @@ class AiTutorController extends Controller
     {
         $validated = $request->validate([
             'message' => ['required', 'string', 'max:5000'],
-            'thread_id' => ['nullable', 'string'],
+            'thread_id' => ['nullable', 'integer'],
         ]);
 
         $result = $this->chat->send(
@@ -51,7 +52,7 @@ class AiTutorController extends Controller
         return response()->json($result);
     }
 
-    public function deleteThread(Request $request, string $threadId): JsonResponse
+    public function deleteThread(Request $request, int $threadId): JsonResponse
     {
         $this->chat->deleteThread($request->user(), $threadId);
         return response()->json(['success' => true]);

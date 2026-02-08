@@ -94,6 +94,11 @@ class User extends Authenticatable
         return $this->hasMany(QuizResult::class);
     }
 
+    public function chatThreads(): HasMany
+    {
+        return $this->hasMany(ChatThread::class);
+    }
+
     public function aiMessages(): HasMany
     {
         return $this->hasMany(AiMessage::class);

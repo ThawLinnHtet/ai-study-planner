@@ -40,7 +40,7 @@ class QuizAgent extends Agent
     /**
      * Generate quiz questions for a given subject and topic.
      */
-    public function generate(string $subject, string $topic, int $count = 3, string $difficulty = 'medium'): QuizOutput
+    public function generate(string $subject, string $topic, int $count = 4, string $difficulty = 'medium'): QuizOutput
     {
         $prompt = <<<PROMPT
 Generate exactly {$count} multiple-choice questions about:

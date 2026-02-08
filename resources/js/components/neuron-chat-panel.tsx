@@ -11,7 +11,9 @@ import { cn } from '@/lib/utils';
 import type { SharedData } from '@/types';
 
 export type NeuronChatThread = {
-    thread_id: string;
+    thread_id: number;
+    provider_thread_id?: string;
+    title?: string;
     updated_at?: string;
     preview?: string;
 };
@@ -24,7 +26,7 @@ export type NeuronChatMessage = {
 };
 
 type Props = {
-    initialThreadId?: string;
+    initialThreadId?: number;
     initialThreads?: NeuronChatThread[];
     initialMessages?: NeuronChatMessage[];
     className?: string;
@@ -164,14 +166,14 @@ export default function NeuronChatPanel({
         }
     };
 
-    const openThread = async (nextThreadId: string) => {
+    const openThread = async (nextThreadId: number) => {
         if (nextThreadId === threadId) return;
 
         setLoadingThread(true);
         setError(null);
         try {
-            const data = await getJson<{ thread_id: string; messages: NeuronChatMessage[] }>(
-                `/ai-tutor/threads/${encodeURIComponent(nextThreadId)}`,
+            const data = await getJson<{ thread_id: number; messages: NeuronChatMessage[] }>(
+                `/ai-tutor/threads/${nextThreadId}`,
             );
             setThreadId(data.thread_id);
             setMessages(data.messages || []);
@@ -186,7 +188,7 @@ export default function NeuronChatPanel({
         setError(null);
         setLoadingThread(true);
         try {
-            const data = await postJson<{ thread_id: string }>('/ai-tutor/new-thread', {});
+            const data = await postJson<{ thread_id: number }>('/ai-tutor/new-thread', {});
             setThreadId(data.thread_id);
             setMessages([]);
             await refreshThreads();
@@ -197,9 +199,9 @@ export default function NeuronChatPanel({
         }
     };
 
-    const deleteThread = async (idToDelete: string) => {
+    const deleteThread = async (idToDelete: number) => {
         try {
-            await deleteJson(`/ai-tutor/threads/${encodeURIComponent(idToDelete)}`);
+            await deleteJson(`/ai-tutor/threads/${idToDelete}`);
             await refreshThreads();
             if (idToDelete === threadId) {
                 await newThread();
@@ -227,7 +229,7 @@ export default function NeuronChatPanel({
 
         setSending(true);
         try {
-            const data = await postJson<{ thread_id: string; assistant: { role: 'assistant'; content: string } }>(
+            const data = await postJson<{ thread_id: number; message: string }>(
                 '/ai-tutor/send',
                 {
                     thread_id: threadId || null,
@@ -243,7 +245,7 @@ export default function NeuronChatPanel({
                 ...prev,
                 {
                     role: 'assistant',
-                    content: data.assistant?.content || '',
+                    content: data.message || '',
                 },
             ]);
 

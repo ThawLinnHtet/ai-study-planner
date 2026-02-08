@@ -18,7 +18,7 @@ type Props = {
 // Helper functions for sessionStorage
 const getUserStorageKey = (userId: number | string) => `neuron-chat-session-${userId}`;
 
-const saveToSession = (userId: number | string, data: { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] }) => {
+const saveToSession = (userId: number | string, data: { threadId: number; threads: NeuronChatThread[]; messages: NeuronChatMessage[] }) => {
     try {
         sessionStorage.setItem(getUserStorageKey(userId), JSON.stringify(data));
     } catch (e) {
@@ -26,7 +26,7 @@ const saveToSession = (userId: number | string, data: { threadId: string; thread
     }
 };
 
-const loadFromSession = (userId: number | string): { threadId: string; threads: NeuronChatThread[]; messages: NeuronChatMessage[] } | null => {
+const loadFromSession = (userId: number | string): { threadId: number; threads: NeuronChatThread[]; messages: NeuronChatMessage[] } | null => {
     try {
         const data = sessionStorage.getItem(getUserStorageKey(userId));
         if (data) {
@@ -51,12 +51,12 @@ export default function NeuronChatWidget({ className }: Props) {
     const user = page.props.auth?.user;
     const [open, setOpen] = useState(false);
     const [chatData, setChatData] = useState<{
-        threadId: string;
+        threadId: number;
         threads: NeuronChatThread[];
         messages: NeuronChatMessage[];
     }>(() => {
         if (!user) {
-            return { threadId: '', threads: [], messages: [] };
+            return { threadId: 0, threads: [], messages: [] };
         }
 
         // Try to load from sessionStorage first
@@ -67,7 +67,7 @@ export default function NeuronChatWidget({ className }: Props) {
         }
 
         // Otherwise use page props
-        const initialThreadId = (page.props as unknown as { threadId?: string }).threadId || '';
+        const initialThreadId = (page.props as unknown as { threadId?: number }).threadId || 0;
         const initialThreads = (page.props as unknown as { threads?: NeuronChatThread[] }).threads || [];
         const initialMessages = (page.props as unknown as { messages?: NeuronChatMessage[] }).messages || [];
 
@@ -92,7 +92,7 @@ export default function NeuronChatWidget({ className }: Props) {
             }
 
             // Reset chat data for new user
-            const initialThreadId = (page.props as unknown as { threadId?: string }).threadId || '';
+            const initialThreadId = (page.props as unknown as { threadId?: number }).threadId || 0;
             const initialThreads = (page.props as unknown as { threads?: NeuronChatThread[] }).threads || [];
             const initialMessages = (page.props as unknown as { messages?: NeuronChatMessage[] }).messages || [];
 

@@ -52,6 +52,12 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
             ->name('quiz.generate');
         Route::post('submit', [\App\Http\Controllers\QuizController::class, 'submit'])
             ->name('quiz.submit');
+        Route::get('history', [\App\Http\Controllers\QuizController::class, 'history'])
+            ->name('quiz.history');
+        Route::get('results/{id}', [\App\Http\Controllers\QuizController::class, 'show'])
+            ->name('quiz.show');
+        Route::post('results/{id}/retake', [\App\Http\Controllers\QuizController::class, 'retake'])
+            ->name('quiz.retake');
     });
 
     Route::get('progress', [\App\Http\Controllers\ProgressController::class, 'index'])
