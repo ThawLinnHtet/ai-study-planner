@@ -19,6 +19,7 @@ class QuizController extends Controller
 
     /**
      * Generate a quiz for a study session topic.
+     * Returns cached quiz if one exists for the same subject+topic and hasn't been completed.
      */
     public function generate(Request $request): JsonResponse
     {
@@ -28,6 +29,33 @@ class QuizController extends Controller
         ]);
 
         $user = $request->user();
+
+        // Check for existing cached quiz (not yet completed/passed)
+        $existingQuiz = Quiz::where('user_id', $user->id)
+            ->whereJsonContains('settings->subject', $validated['subject'])
+            ->whereJsonContains('settings->topic', $validated['topic'])
+            ->where('created_at', '>=', now()->subHours(24))
+            ->whereDoesntHave('results', function ($q) {
+                $q->where('percentage', '>=', 80);
+            })
+            ->latest()
+            ->first();
+
+        if ($existingQuiz) {
+            $safeQuestions = array_map(fn ($q) => [
+                'question' => $q['question'],
+                'options' => $q['options'],
+            ], $existingQuiz->questions ?? []);
+
+            return response()->json([
+                'quiz_id' => $existingQuiz->id,
+                'title' => $existingQuiz->title,
+                'total_questions' => $existingQuiz->total_questions,
+                'questions' => $safeQuestions,
+                'pass_percentage' => $this->quizService->getPassPercentage(),
+                'cached' => true,
+            ]);
+        }
 
         try {
             $quiz = $this->quizService->generateForSession(

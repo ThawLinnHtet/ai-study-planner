@@ -9,7 +9,7 @@ use App\Models\User;
 
 class QuizService
 {
-    protected const PASS_PERCENTAGE = 80;
+    protected const PASS_PERCENTAGE = 75;
     protected const QUESTIONS_PER_QUIZ = 4;
 
     /**

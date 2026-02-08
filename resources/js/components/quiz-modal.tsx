@@ -53,6 +53,50 @@ interface QuizModalProps {
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
+const STORAGE_KEY = 'quiz_progress';
+
+interface StoredQuizState {
+    quizId: number;
+    subject: string;
+    topic: string;
+    questions: QuizQuestion[];
+    currentIndex: number;
+    answers: Record<number, string>;
+    timestamp: number;
+}
+
+function saveQuizProgress(state: StoredQuizState) {
+    try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    } catch { /* ignore storage errors */ }
+}
+
+function loadQuizProgress(subject: string, topic: string): StoredQuizState | null {
+    try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return null;
+        const state: StoredQuizState = JSON.parse(raw);
+        // Only restore if same subject+topic and less than 24 hours old
+        if (
+            state.subject === subject &&
+            state.topic === topic &&
+            Date.now() - state.timestamp < 24 * 60 * 60 * 1000
+        ) {
+            return state;
+        }
+        localStorage.removeItem(STORAGE_KEY);
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+function clearQuizProgress() {
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch { /* ignore */ }
+}
+
 export default function QuizModal({ open, onClose, onPassed, onFailed, subject, topic }: QuizModalProps) {
     const [phase, setPhase] = useState<Phase>('loading');
     const [quizId, setQuizId] = useState<number | null>(null);
@@ -61,8 +105,9 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
     const [answers, setAnswers] = useState<Record<number, string>>({});
     const [result, setResult] = useState<QuizResult | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const [initialized, setInitialized] = useState(false);
 
-    const reset = () => {
+    const reset = (clearStorage = true) => {
         setPhase('loading');
         setQuizId(null);
         setQuestions([]);
@@ -70,11 +115,27 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
         setAnswers({});
         setResult(null);
         setError(null);
+        setInitialized(false);
+        if (clearStorage) clearQuizProgress();
     };
 
-    const generateQuiz = useCallback(async () => {
-        reset();
+    const generateQuiz = useCallback(async (forceNew = false) => {
+        reset(forceNew);
         setPhase('loading');
+
+        // Try to restore from localStorage first
+        if (!forceNew) {
+            const saved = loadQuizProgress(subject, topic);
+            if (saved) {
+                setQuizId(saved.quizId);
+                setQuestions(saved.questions);
+                setCurrentIndex(saved.currentIndex);
+                setAnswers(saved.answers);
+                setPhase('quiz');
+                setInitialized(true);
+                return;
+            }
+        }
 
         try {
             const res = await fetch('/quiz/generate', {
@@ -93,6 +154,18 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
             setQuizId(data.quiz_id);
             setQuestions(data.questions);
             setPhase('quiz');
+            setInitialized(true);
+
+            // Save to localStorage immediately
+            saveQuizProgress({
+                quizId: data.quiz_id,
+                subject,
+                topic,
+                questions: data.questions,
+                currentIndex: 0,
+                answers: {},
+                timestamp: Date.now(),
+            });
         } catch {
             setError('Failed to generate quiz. Please try again.');
             setPhase('quiz');
@@ -121,31 +194,41 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
             const data: QuizResult = await res.json();
             setResult(data);
             setPhase('result');
+            clearQuizProgress();
         } catch {
             setError('Failed to submit quiz. Please try again.');
             setPhase('quiz');
         }
     };
 
+    // Save progress to localStorage whenever answers or currentIndex change
+    useEffect(() => {
+        if (quizId && questions.length > 0 && phase === 'quiz') {
+            saveQuizProgress({
+                quizId,
+                subject,
+                topic,
+                questions,
+                currentIndex,
+                answers,
+                timestamp: Date.now(),
+            });
+        }
+    }, [quizId, questions, currentIndex, answers, phase, subject, topic]);
+
     const handleOpenChange = (isOpen: boolean) => {
         if (!isOpen) {
+            // Don't reset on close - preserve state for resuming
             onClose();
         }
     };
 
-    // Auto-generate when modal opens
+    // Auto-generate/restore when modal opens
     useEffect(() => {
-        if (open && phase === 'loading' && !quizId && !error) {
+        if (open && !initialized && phase === 'loading' && !error) {
             generateQuiz();
         }
-    }, [open, phase, quizId, error, generateQuiz]);
-
-    // Reset state when modal closes
-    useEffect(() => {
-        if (!open) {
-            reset();
-        }
-    }, [open]);
+    }, [open, initialized, phase, error, generateQuiz]);
 
     const currentQuestion = questions[currentIndex];
     const allAnswered = questions.length > 0 && Object.keys(answers).length === questions.length;
@@ -166,7 +249,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                     <div className="flex flex-col items-center justify-center py-8 gap-4">
                         <AlertTriangle className="size-8 text-destructive" />
                         <p className="text-sm text-destructive text-center">{error}</p>
-                        <Button onClick={generateQuiz} variant="outline" size="sm">
+                        <Button onClick={() => generateQuiz()} variant="outline" size="sm">
                             <RotateCcw className="size-4 mr-2" />
                             Try Again
                         </Button>
@@ -181,7 +264,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                                 {subject}: {topic}
                             </DialogTitle>
                             <DialogDescription>
-                                Question {currentIndex + 1} of {questions.length} — Score 80%+ to complete
+                                Question {currentIndex + 1} of {questions.length} — Score 75%+ to complete
                             </DialogDescription>
                         </DialogHeader>
 
@@ -331,7 +414,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                                         </Button>
                                     )}
                                     <Button
-                                        onClick={generateQuiz}
+                                        onClick={() => generateQuiz(true)}
                                         className="flex-1"
                                     >
                                         <RotateCcw className="size-4 mr-2" />

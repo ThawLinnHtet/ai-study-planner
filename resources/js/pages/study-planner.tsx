@@ -1178,7 +1178,6 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                     open={quizOpen}
                     onClose={() => {
                         setQuizOpen(false);
-                        setQuizSession(null);
                     }}
                     onPassed={handleQuizPassed}
                     onFailed={handleQuizFailed}
