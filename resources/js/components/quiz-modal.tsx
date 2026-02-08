@@ -46,13 +46,14 @@ interface QuizModalProps {
     open: boolean;
     onClose: () => void;
     onPassed: (resultId: number) => void;
+    onFailed?: () => void;
     subject: string;
     topic: string;
 }
 
 type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
 
-export default function QuizModal({ open, onClose, onPassed, subject, topic }: QuizModalProps) {
+export default function QuizModal({ open, onClose, onPassed, onFailed, subject, topic }: QuizModalProps) {
     const [phase, setPhase] = useState<Phase>('loading');
     const [quizId, setQuizId] = useState<number | null>(null);
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
@@ -319,6 +320,16 @@ export default function QuizModal({ open, onClose, onPassed, subject, topic }: Q
                                     >
                                         Close
                                     </Button>
+                                    {onFailed && (
+                                        <Button
+                                            variant="secondary"
+                                            onClick={onFailed}
+                                            className="flex-1"
+                                        >
+                                            <CheckCircle2 className="size-4 mr-2" />
+                                            Complete Anyway
+                                        </Button>
+                                    )}
                                     <Button
                                         onClick={generateQuiz}
                                         className="flex-1"

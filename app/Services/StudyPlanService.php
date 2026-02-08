@@ -86,8 +86,12 @@ class StudyPlanService
     /**
      * Get the plan with generated_plan.schedule set to the current week's schedule.
      * Generates the next week's schedule when the user has moved into a new week.
+     * 
+     * @param StudyPlan $plan The study plan
+     * @param string|null $targetDate Optional target date (Y-m-d format). Defaults to today.
+     * @return array
      */
-    public function getPlanForCurrentWeek(StudyPlan $plan): array
+    public function getPlanForCurrentWeek(StudyPlan $plan, ?string $targetDate = null): array
     {
         $plan->refresh();
         $gp = $plan->generated_plan ?? [];
@@ -96,7 +100,7 @@ class StudyPlanService
         }
 
         $startsOn = Carbon::parse($plan->starts_on)->startOfDay();
-        $today = Carbon::today()->startOfDay();
+        $today = $targetDate ? Carbon::parse($targetDate)->startOfDay() : Carbon::today()->startOfDay();
         $daysSinceStart = $startsOn->diffInDays($today, false);
         $weekIndex = (int) floor($daysSinceStart / 7);
         if ($weekIndex < 0) {
@@ -154,6 +158,10 @@ class StudyPlanService
 
         $weekStartDate = Carbon::parse($plan->starts_on)->addWeeks($weekIndex)->toDateString();
 
+        // Gather topic history to prevent looping
+        $allCoveredTopics = $this->extractCoveredTopics($weeks, $weekIndex);
+        $completedTopics = $this->getCompletedTopicsFromSessions($user, $plan);
+
         $output = $this->neuron->planner()->createNextWeekPlan([
             'subjects' => $user->subjects,
             'exam_dates' => $user->exam_dates,
@@ -162,9 +170,12 @@ class StudyPlanService
             'productivity_peak' => $user->productivity_peak,
             'learning_style' => $user->learning_style,
             'study_goal' => $user->study_goal,
+            'subject_session_durations' => $user->subject_session_durations ?? [],
             'week_number' => $weekIndex + 1,
             'week_start_date' => $weekStartDate,
             'previous_week_schedule' => $previousSchedule,
+            'all_covered_topics' => $allCoveredTopics,
+            'completed_topics' => $completedTopics,
         ]);
 
         $newWeekSchedule = $this->normalizeGeneratedPlan((array) $output)['schedule'] ?? [];
@@ -427,10 +438,19 @@ class StudyPlanService
                 if (empty($resources)) {
                     $resources = $this->defaultResources($subjectVal);
                 }
+                $duration = $this->parseDuration($s['duration_minutes'] ?? $s['duration'] ?? null);
+                
+                // Validate and cap session duration
+                if ($duration > 90) {
+                    $duration = 90; // Cap at maximum 90 minutes
+                } elseif ($duration < 25) {
+                    $duration = 30; // Minimum 30 minutes (default for very short sessions)
+                }
+                
                 $out[] = [
                     'subject' => $subjectVal,
                     'topic' => $topicVal,
-                    'duration_minutes' => $this->parseDuration($s['duration_minutes'] ?? $s['duration'] ?? null),
+                    'duration_minutes' => $duration,
                     'focus_level' => in_array($s['focus_level'] ?? '', ['low', 'medium', 'high'], true)
                         ? $s['focus_level']
                         : 'medium',
@@ -742,5 +762,71 @@ class StudyPlanService
         }
 
         return 60;
+    }
+
+    /**
+     * Extract all topics that were scheduled in previous weeks (from stored week data).
+     * Returns an associative array: subject => [topic1, topic2, ...]
+     */
+    protected function extractCoveredTopics(array $weeks, int $upToWeekIndex): array
+    {
+        $covered = [];
+
+        for ($i = 0; $i < $upToWeekIndex; $i++) {
+            if (! isset($weeks[$i]['schedule'])) {
+                continue;
+            }
+
+            $schedule = $weeks[$i]['schedule'];
+            foreach ($schedule as $dayData) {
+                $sessions = [];
+                if (is_array($dayData)) {
+                    $sessions = $dayData['sessions'] ?? $dayData;
+                }
+
+                foreach ($sessions as $session) {
+                    if (! is_array($session)) {
+                        continue;
+                    }
+                    $subject = $session['subject'] ?? null;
+                    $topic = $session['topic'] ?? null;
+                    if ($subject && $topic) {
+                        $covered[$subject] = $covered[$subject] ?? [];
+                        if (! in_array($topic, $covered[$subject], true)) {
+                            $covered[$subject][] = $topic;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $covered;
+    }
+
+    /**
+     * Get topics the user has actually completed (passed quiz) from StudySession records.
+     * Returns an associative array: subject => [topic1, topic2, ...]
+     */
+    protected function getCompletedTopicsFromSessions(User $user, StudyPlan $plan): array
+    {
+        $sessions = $user->studySessions()
+            ->where('study_plan_id', $plan->id)
+            ->where('status', 'completed')
+            ->get();
+
+        $completed = [];
+        foreach ($sessions as $session) {
+            $meta = $session->meta ?? [];
+            $subject = $meta['subject_name'] ?? null;
+            $topic = $meta['topic_name'] ?? null;
+            if ($subject && $topic) {
+                $completed[$subject] = $completed[$subject] ?? [];
+                if (! in_array($topic, $completed[$subject], true)) {
+                    $completed[$subject][] = $topic;
+                }
+            }
+        }
+
+        return $completed;
     }
 }

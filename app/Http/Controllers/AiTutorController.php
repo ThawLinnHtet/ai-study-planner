@@ -15,10 +15,16 @@ class AiTutorController extends Controller
 
     public function newThread(Request $request): JsonResponse
     {
-        $thread = $this->chat->createThread($request->user(), 'New Chat');
-        return response()->json([
-            'thread_id' => $thread->id,
-        ]);
+        try {
+            $thread = $this->chat->createThread($request->user(), 'New Chat');
+            return response()->json([
+                'thread_id' => $thread->id,
+            ]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 422);
+        }
     }
 
     public function threads(Request $request): JsonResponse

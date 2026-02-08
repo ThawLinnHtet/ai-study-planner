@@ -156,8 +156,11 @@ class StudyPlanController extends Controller
             ->where('started_at', '>=', now()->startOfWeek())
             ->get();
 
+        // Get target date from query parameter, default to today
+        $targetDate = $request->query('date');
+        
         $plan = $activePlan !== null
-            ? $this->studyPlanService->getPlanForCurrentWeek($activePlan)
+            ? $this->studyPlanService->getPlanForCurrentWeek($activePlan, $targetDate)
             : null;
 
         return Inertia::render('study-planner', [

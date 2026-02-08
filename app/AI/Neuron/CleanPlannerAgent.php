@@ -118,7 +118,7 @@ FOCUS CAPACITY CONSTRAINTS:
 - Maximum sustainable high-focus time: 4 hours per day
 - Maximum sustainable medium-focus time: 3 hours per day
 - Maximum sustainable low-focus time: 2 hours per day
-- Total realistic focus capacity: 9 hours per day
+- Total realistic focus capacity: 8 hours per day
 - IMPORTANT: Distribute study time across focus levels to prevent burnout
 
 CRITICAL REQUIREMENTS:
@@ -152,9 +152,26 @@ ENHANCED UX & QUALITY REQUIREMENTS:
 14. NO REPEATS: Never repeat the same subject on the same day
 15. TOPIC PROGRESSION: Topics should build logically from basic to advanced
 16. EXAM PREPARATION: Prioritize subjects with upcoming exams within 2 weeks
+
+SESSION DURATION RULES:
+- User's preferred session durations per subject: {$sessionDurations}
+- FOR EACH SUBJECT: Check if user set min-max duration in the data above
+- IF user set duration for subject: Use EXACTLY that min-max range (e.g., Math: 30-45min → use 30-45min for Math sessions)
+- IF no duration set for subject: Use focus-based defaults (High=60min, Medium=45min, Low=30min)
+- Maximum session length: 90 minutes (never exceed this)
+- Minimum session length: 25 minutes (never go below this)
+- IMPORTANT: Always respect user's min-max preferences exactly - don't randomly assign durations
+- EXAMPLE: If user set "Math": {"min": 30, "max": 45}, then all Math sessions must be 30-45 minutes
 17. STUDY GOAL ALIGNMENT: All topics and sessions should align with the study goal ({$goal}) - exam prep focuses on exam topics, skill building includes practical exercises
 18. SESSION DURATION: If preferred session durations are provided for a subject, use those min-max ranges. Otherwise, keep sessions between 30-90 minutes, with longer sessions for difficult subjects
 19. BREAKS: Build in natural break points between different subjects and focus levels
+
+EXAM DATE HANDLING:
+- Subjects WITH exam dates: Prioritize before exam, review during exam week, continue with new topics after exam
+- Subjects WITHOUT exam dates: Continue normal progression indefinitely - never stop scheduling these subjects
+- IMPORTANT: Even if one subject's exam passes, continue scheduling ALL other subjects normally
+- Example: If AWS SAA exam passed, continue scheduling TypeScript, Python, Math, etc. with new topics
+- NEVER stop generating schedules for subjects without exams just because another subject had an exam
 
 FOCAPACITY-AWARE SCHEDULING STRATEGY:
 - If {$hours} ≤ 4: Use high-focus sessions during peak time only
@@ -232,10 +249,15 @@ PROMPT;
         $prevWeekNum = $weekNumber - 1;
         $weekStartDate = $data['week_start_date'] ?? date('Y-m-d');
         $previousWeekSummary = $data['previous_week_schedule'] ?? '[]';
+        $allCoveredTopics = $data['all_covered_topics'] ?? [];
+        $completedTopics = $data['completed_topics'] ?? [];
 
         if (is_array($previousWeekSummary)) {
             $previousWeekSummary = json_encode($previousWeekSummary);
         }
+
+        $coveredTopicsJson = json_encode($allCoveredTopics);
+        $completedTopicsJson = json_encode($completedTopics);
 
         $prompt = <<<PROMPT
 Generate the NEXT weekly study schedule. This is WEEK {$weekNumber} (starting {$weekStartDate}).
@@ -250,6 +272,44 @@ Generate the NEXT weekly study schedule. This is WEEK {$weekNumber} (starting {$
 PREVIOUS WEEK (Week {$prevWeekNum}) COVERED:
 {$previousWeekSummary}
 
+ALL PREVIOUSLY SCHEDULED TOPICS (Weeks 1-{$prevWeekNum}):
+{$coveredTopicsJson}
+
+USER'S COMPLETED/PASSED TOPICS (verified by quiz):
+{$completedTopicsJson}
+
+⚠️ ANTI-REPETITION RULES (CRITICAL):
+- You MUST NOT repeat any topic listed in "ALL PREVIOUSLY SCHEDULED TOPICS" above.
+- Every topic this week MUST be NEW and DIFFERENT from all previous weeks.
+- Topics must PROGRESS FORWARD in the curriculum. For example:
+  * If Week 1 covered "Introduction to Calculus", Week 2 should cover "Derivatives" or "Limits in Depth", NOT "Introduction to Calculus" again.
+  * If Week 2 covered "Derivatives", Week 3 should cover "Integration" or "Applications of Derivatives", NOT "Derivatives" again.
+- For subjects where the user has COMPLETED topics (passed quiz), advance to the NEXT logical chapter.
+- For subjects where the user has NOT completed topics, you may revisit them at a slightly higher level but with a DIFFERENT topic name and different key_topics.
+
+TOPIC PROGRESSION STRATEGY:
+- Week {$weekNumber} should naturally continue from where Week {$prevWeekNum} ended.
+- Each subject should advance deeper into its curriculum.
+- Use progressive topic names that clearly indicate advancement (e.g., "Calculus I: Limits" → "Calculus II: Derivatives" → "Calculus III: Integration").
+- Include review sessions only if exam is within 7 days, and label them as "Review: [topic]" to distinguish from new content.
+
+EXAM DATE HANDLING:
+- Subjects WITH exam dates: Prioritize before exam, review during exam week, continue with new topics after exam
+- Subjects WITHOUT exam dates: Continue normal progression indefinitely - never stop scheduling these subjects
+- IMPORTANT: Even if one subject's exam passes, continue scheduling ALL other subjects normally
+- Example: If AWS SAA exam passed, continue scheduling TypeScript, Python, Math, etc. with new topics
+- NEVER stop generating schedules for subjects without exams just because another subject had an exam
+
+SESSION DURATION RULES:
+- User's preferred session durations per subject: {$sessionDurations}
+- FOR EACH SUBJECT: Check if user set min-max duration in the data above
+- IF user set duration for subject: Use EXACTLY that min-max range (e.g., Math: 30-45min → use 30-45min for Math sessions)
+- IF no duration set for subject: Use focus-based defaults (High=60min, Medium focus=45min, Low focus=30min)
+- Maximum session length: 90 minutes (never exceed this)
+- Minimum session length: 25 minutes (never go below this)
+- IMPORTANT: Always respect user's min-max preferences exactly - don't randomly assign durations
+- EXAMPLE: If user set "Math": {"min": 30, "max": 45}, then all Math sessions must be 30-45 minutes
+
 CRITICAL REQUIREMENTS:
 1. You MUST return a JSON object with a "schedule" key containing day names as keys
 2. Use ONLY these exact day keys: "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"
@@ -259,7 +319,7 @@ CRITICAL REQUIREMENTS:
 6. Each session MUST include key_topics (array of 3-6 specific concepts) and resources (array of 2-4 helpful links)
 7. Each resource MUST have: title (string), url (valid direct URL), type (article|video|course|tool)
 8. Do NOT wrap the schedule in a numeric array
-9. Generate NEW topics/chapters progressing from where the previous week left off
+9. ALL topics MUST be NEW — never repeat a previously scheduled topic
 10. Return ONLY the JSON object, no markdown formatting, no explanations
 
 TRUSTED RESOURCE URLS:

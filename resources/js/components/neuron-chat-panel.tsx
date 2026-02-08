@@ -184,19 +184,11 @@ export default function NeuronChatPanel({
         }
     };
 
-    const newThread = async () => {
+    const newThread = () => {
         setError(null);
-        setLoadingThread(true);
-        try {
-            const data = await postJson<{ thread_id: number }>('/ai-tutor/new-thread', {});
-            setThreadId(data.thread_id);
-            setMessages([]);
-            await refreshThreads();
-        } catch (e) {
-            setError(e instanceof Error ? e.message : 'Failed to create thread');
-        } finally {
-            setLoadingThread(false);
-        }
+        setThreadId(undefined);  // Clear thread ID - thread will be created on first message
+        setMessages([]);  // Clear messages
+        setDraft('');  // Clear draft
     };
 
     const deleteThread = async (idToDelete: number) => {
@@ -293,15 +285,19 @@ export default function NeuronChatPanel({
                         {/* New Chat Button */}
                         <button
                             onClick={newThread}
-                            disabled={loadingThread}
+                            disabled={loadingThread || threads.length >= 5}
                             className={cn(
                                 'flex items-center gap-1 px-3 py-1.5 rounded-full text-xs whitespace-nowrap transition-all backdrop-blur-sm',
-                                'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300',
+                                threads.length >= 5
+                                    ? 'bg-slate-200 dark:bg-slate-600 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                                    : 'bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-300',
                                 'disabled:opacity-50'
                             )}
+                            title={threads.length >= 5 ? 'Maximum 5 chats reached. Delete some chats to create new ones.' : 'Create new chat'}
                         >
                             <span className="text-sm leading-none">+</span>
                             <span>New Chat</span>
+                            {threads.length >= 5 && <span className="text-xs opacity-75">(5/5)</span>}
                         </button>
 
                         {threads.slice(0, 3).map((t) => (
@@ -316,7 +312,7 @@ export default function NeuronChatPanel({
                                 )}
                             >
                                 <span className="max-w-[100px] truncate font-medium">
-                                    {t.preview || 'New chat'}
+                                    {t.title || 'New chat'}
                                 </span>
                                 <span
                                     onClick={(e) => {

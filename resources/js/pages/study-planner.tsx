@@ -1,4 +1,4 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, useForm, router } from '@inertiajs/react';
 import {
     format,
     startOfWeek,
@@ -129,6 +129,24 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
     const cardRef = useRef<HTMLDivElement>(null);
     const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
 
+    // Simple navigation function to pass date parameter
+    const navigateToDate = (date: Date) => {
+        const dateStr = format(date, 'yyyy-MM-dd');
+        window.location.href = `/study-planner?date=${dateStr}`;
+    };
+
+    // Sync selectedDate with URL parameter on mount and when URL changes
+    useEffect(() => {
+        const urlParams = new URLSearchParams(window.location.search);
+        const dateParam = urlParams.get('date');
+        if (dateParam) {
+            const parsedDate = parseISO(dateParam);
+            if (!isNaN(parsedDate.getTime())) {
+                setSelectedDate(startOfDay(parsedDate));
+            }
+        }
+    }, [window.location.search]);
+
     // Calculate month data
     const monthStart = startOfMonth(selectedDate);
     const monthEnd = endOfMonth(selectedDate);
@@ -257,6 +275,28 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
         setQuizSession(null);
     }, [quizSession, form]);
 
+    // Handle failed quiz - option to complete anyway or retake
+    const handleQuizFailed = useCallback(() => {
+        if (!quizSession) return;
+
+        // Close quiz modal and show option to complete anyway
+        if (confirm('Quiz not passed. Would you like to mark this session complete anyway?')) {
+            setQuizOpen(false);
+
+            form.setData({
+                subject: quizSession.subject,
+                topic: quizSession.topic,
+                duration_minutes: quizSession.duration_minutes,
+                started_at: format(quizSession.date, "yyyy-MM-dd HH:mm:ss"),
+                status: 'completed',
+                quiz_result_id: null,
+            });
+
+            setPendingQuizResultId(-1); // Special marker for failed quiz
+            setQuizSession(null);
+        }
+    }, [quizSession, form]);
+
     // Post form after quiz_result_id is set in form data
     useEffect(() => {
         if (pendingQuizResultId !== null && form.data.quiz_result_id === pendingQuizResultId) {
@@ -265,7 +305,14 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
             });
             setPendingQuizResultId(null);
         }
-    }, [form.data.quiz_result_id, pendingQuizResultId]);
+        // Handle failed quiz case (marker is -1, quiz_result_id is null)
+        if (pendingQuizResultId === -1 && form.data.quiz_result_id === null && form.data.status === 'completed') {
+            form.post(route('study-plan.toggle-session'), {
+                preserveScroll: true,
+            });
+            setPendingQuizResultId(null);
+        }
+    }, [form.data.quiz_result_id, form.data.status, pendingQuizResultId]);
 
     // Calculate days until exam for a subject
     const getExamInfo = (subject: string): {
@@ -285,7 +332,8 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
             };
         }
 
-        const today = new Date();
+        // Use selectedDate instead of current date for accurate countdown
+        const today = selectedDate;
         const exam = new Date(examDate);
         const diffTime = exam.getTime() - today.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -713,7 +761,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => {
-                                    setSelectedDate(startOfDay(new Date()));
+                                    navigateToDate(startOfDay(new Date()));
                                     setViewMode('week');
                                 }}
                                 className="h-6 px-2 text-base hover:bg-primary/10 hover:text-primary font-semibold"
@@ -783,7 +831,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                                 return (
                                                     <button
                                                         key={dayIdx}
-                                                        onClick={() => setSelectedDate(day)}
+                                                        onClick={() => navigateToDate(day)}
                                                         className={cn(
                                                             "relative flex flex-col items-center justify-center p-1 rounded transition-all duration-150 min-h-[32px]",
                                                             !isCurrentMonth && "opacity-30",
@@ -831,7 +879,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => setSelectedDate(addDays(selectedDate, -7))}
+                                        onClick={() => navigateToDate(addDays(selectedDate, -7))}
                                         className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
                                     >
                                         <ChevronLeft className="w-3 h-3" />
@@ -840,7 +888,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                     <Button
                                         variant="ghost"
                                         size="icon"
-                                        onClick={() => setSelectedDate(addDays(selectedDate, 7))}
+                                        onClick={() => navigateToDate(addDays(selectedDate, 7))}
                                         className="h-6 w-6 hover:bg-primary/10 hover:text-primary"
                                     >
                                         <ChevronRight className="w-3 h-3" />
@@ -857,7 +905,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                         return (
                                             <button
                                                 key={day.name}
-                                                onClick={() => setSelectedDate(day.date)}
+                                                onClick={() => navigateToDate(day.date)}
                                                 className={cn(
                                                     "relative flex flex-col items-center py-2 px-1 rounded-lg transition-all duration-200",
                                                     isSelected
@@ -945,114 +993,116 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                                         >
                                             <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                                             <CardContent className="p-5 relative">
-                                                <div className="flex items-start gap-4">
-                                                    <button
-                                                        onClick={() => toggleSession(selectedDate, session)}
-                                                        className="shrink-0 mt-0.5 transition-all duration-300 hover:scale-110 active:scale-95"
-                                                    >
-                                                        {done ? (
-                                                            <CheckCircle2 className="w-7 h-7 text-emerald-500 drop-shadow-sm" />
-                                                        ) : (
-                                                            <Circle className="w-7 h-7 text-muted-foreground hover:text-primary transition-colors duration-200" />
-                                                        )}
-                                                    </button>
-
-                                                    <div className="flex-1 min-w-0 space-y-2">
-                                                        <div className="flex items-start justify-between gap-3">
-                                                            <div className="flex-1 min-w-0">
-                                                                <h4 className={cn(
-                                                                    "font-semibold text-lg leading-tight mb-1 transition-colors duration-200",
-                                                                    done && "line-through text-muted-foreground"
-                                                                )}>
-                                                                    {subj}
-                                                                </h4>
-                                                                {(() => {
-                                                                    const examInfo = getExamInfo(subj);
-                                                                    return (
-                                                                        <div className="flex items-center gap-2 text-sm font-medium mb-2">
-                                                                            {examInfo.hasExam ? (
-                                                                                <>
-                                                                                    <Badge className={examInfo.variant === 'exam-urgent' ? 'bg-rose-500 text-white border-rose-500' : examInfo.variant === 'exam-soon' ? 'bg-orange-500 text-white border-orange-500' : 'bg-blue-500 text-white border-blue-500'}>
-                                                                                        Exam Prep
-                                                                                    </Badge>
-                                                                                    {examInfo.daysUntil && examInfo.daysUntil <= 14 && (
-                                                                                        <span className={examInfo.variant === 'exam-urgent' ? 'text-rose-500 font-semibold ml-1 flex items-center gap-1' : examInfo.variant === 'exam-soon' ? 'text-orange-500 ml-1 flex items-center gap-1' : 'text-blue-500 ml-1 flex items-center gap-1'}>
-                                                                                            {examInfo.variant === 'exam-urgent' && <Flame className="w-3.5 h-3.5" />}
-                                                                                            {examInfo.variant === 'exam-soon' && <AlertTriangle className="w-3.5 h-3.5" />}
-                                                                                            {examInfo.variant === 'exam-planned' && <Info className="w-3.5 h-3.5" />}
-                                                                                            Exam in {examInfo.daysUntil} days
-                                                                                        </span>
-                                                                                    )}
-                                                                                </>
-                                                                            ) : (
-                                                                                <Badge variant="outline" className="text-muted-foreground">
-                                                                                    Regular Study
+                                                <div className="flex-1 min-w-0 space-y-2">
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="flex-1 min-w-0">
+                                                            <h4 className={cn(
+                                                                "font-semibold text-lg leading-tight mb-1 transition-colors duration-200",
+                                                                done && "line-through text-muted-foreground"
+                                                            )}>
+                                                                {subj}
+                                                            </h4>
+                                                            {(() => {
+                                                                const examInfo = getExamInfo(subj);
+                                                                return (
+                                                                    <div className="flex items-center gap-2 text-sm font-medium mb-2">
+                                                                        {examInfo.hasExam ? (
+                                                                            <>
+                                                                                <Badge className={examInfo.variant === 'exam-urgent' ? 'bg-rose-500 text-white border-rose-500' : examInfo.variant === 'exam-soon' ? 'bg-orange-500 text-white border-orange-500' : 'bg-blue-500 text-white border-blue-500'}>
+                                                                                    Exam Prep
                                                                                 </Badge>
-                                                                            )}
-                                                                        </div>
-                                                                    );
-                                                                })()}
-                                                                {session.focus_level === 'high' && (
-                                                                    <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium mt-1">
-                                                                        <Sparkles className="w-3.5 h-3.5" />
-                                                                        <span>Deep Focus Required</span>
+                                                                                {examInfo.daysUntil && examInfo.daysUntil <= 14 && (
+                                                                                    <span className={examInfo.variant === 'exam-urgent' ? 'text-rose-500 font-semibold ml-1 flex items-center gap-1' : examInfo.variant === 'exam-soon' ? 'text-orange-500 ml-1 flex items-center gap-1' : 'text-blue-500 ml-1 flex items-center gap-1'}>
+                                                                                        {examInfo.variant === 'exam-urgent' && <Flame className="w-3.5 h-3.5" />}
+                                                                                        {examInfo.variant === 'exam-soon' && <AlertTriangle className="w-3.5 h-3.5" />}
+                                                                                        {examInfo.variant === 'exam-planned' && <Info className="w-3.5 h-3.5" />}
+                                                                                        Exam in {examInfo.daysUntil} days
+                                                                                    </span>
+                                                                                )}
+                                                                            </>
+                                                                        ) : (
+                                                                            <Badge variant="outline" className="text-muted-foreground">
+                                                                                Regular Study
+                                                                            </Badge>
+                                                                        )}
                                                                     </div>
-                                                                )}
-                                                            </div>
-
-                                                            <div className="flex items-center gap-2 text-base font-medium text-muted-foreground shrink-0 bg-muted/50 px-2 py-1 rounded-lg border border-border/30">
-                                                                <Clock className="w-4 h-4" />
-                                                                <span>{formatDuration(session.duration_minutes)}</span>
-                                                            </div>
+                                                                );
+                                                            })()}
+                                                            {session.focus_level === 'high' && (
+                                                                <div className="flex items-center gap-1.5 text-sm text-rose-600 dark:text-rose-400 font-medium mt-1">
+                                                                    <Sparkles className="w-3.5 h-3.5" />
+                                                                    <span>Deep Focus Required</span>
+                                                                </div>
+                                                            )}
                                                         </div>
 
-                                                        {top && (
-                                                            <p className="text-base text-muted-foreground leading-relaxed line-clamp-2">
-                                                                {top}
-                                                            </p>
-                                                        )}
+                                                        <div className="flex items-center gap-2 text-base font-medium text-muted-foreground shrink-0 bg-muted/50 px-2 py-1 rounded-lg border border-border/30">
+                                                            <Clock className="w-4 h-4" />
+                                                            <span>{formatDuration(session.duration_minutes)}</span>
+                                                        </div>
+                                                    </div>
 
-                                                        {session.key_topics && session.key_topics.length > 0 && (
-                                                            <div className="pt-3 border-t border-border/40">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <Sparkles className="w-3.5 h-3.5 text-primary" />
-                                                                    <span className="text-base font-semibold text-foreground">Key Topics</span>
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-1.5">
-                                                                    {session.key_topics.map((topic, topicIdx) => (
-                                                                        <span
-                                                                            key={`${subj}-topic-${topicIdx}`}
-                                                                            className="inline-flex items-center px-2.5 py-1 rounded-full text-base bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors duration-200"
-                                                                        >
-                                                                            {topic}
-                                                                        </span>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        )}
+                                                    {top && (
+                                                        <p className="text-base text-muted-foreground leading-relaxed line-clamp-2">
+                                                            {top}
+                                                        </p>
+                                                    )}
 
-                                                        {session.resources && session.resources.length > 0 && (
-                                                            <div className="pt-3 border-t border-border/40">
-                                                                <div className="flex items-center gap-2 mb-2">
-                                                                    <BookOpen className="w-3.5 h-3.5 text-primary" />
-                                                                    <span className="text-base font-semibold text-foreground">Resources</span>
-                                                                </div>
-                                                                <div className="space-y-1.5">
-                                                                    {session.resources.map((resource, resourceIdx) => (
-                                                                        <a
-                                                                            key={`${subj}-res-${resourceIdx}`}
-                                                                            href={resource.url}
-                                                                            target="_blank"
-                                                                            rel="noreferrer"
-                                                                            className="flex items-center gap-2 text-base text-primary hover:text-primary/80 hover:underline transition-all duration-200 hover:translate-x-1"
-                                                                        >
-                                                                            <Link2 className="w-3.5 h-3.5 shrink-0" />
-                                                                            <span className="truncate">{resource.title}</span>
-                                                                        </a>
-                                                                    ))}
-                                                                </div>
+                                                    {session.key_topics && session.key_topics.length > 0 && (
+                                                        <div className="pt-3 border-t border-border/40">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <Sparkles className="w-3.5 h-3.5 text-primary" />
+                                                                <span className="text-base font-semibold text-foreground">Key Topics</span>
                                                             </div>
-                                                        )}
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {session.key_topics.map((topic, topicIdx) => (
+                                                                    <span
+                                                                        key={`${subj}-topic-${topicIdx}`}
+                                                                        className="inline-flex items-center px-2.5 py-1 rounded-full text-base bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors duration-200"
+                                                                    >
+                                                                        {topic}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {session.resources && session.resources.length > 0 && (
+                                                        <div className="pt-3 border-t border-border/40">
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <BookOpen className="w-3.5 h-3.5 text-primary" />
+                                                                <span className="text-base font-semibold text-foreground">Resources</span>
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                {session.resources.map((resource, resourceIdx) => (
+                                                                    <a
+                                                                        key={`${subj}-res-${resourceIdx}`}
+                                                                        href={resource.url}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="flex items-center gap-2 text-base text-primary hover:text-primary/80 hover:underline transition-all duration-200 hover:translate-x-1"
+                                                                    >
+                                                                        <Link2 className="w-3.5 h-3.5 shrink-0" />
+                                                                        <span className="truncate">{resource.title}</span>
+                                                                    </a>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Take Quiz Button - Moved to bottom for better UX */}
+                                                    <div className="pt-4 border-t border-border/40 mt-4">
+                                                        <button
+                                                            onClick={() => toggleSession(selectedDate, session)}
+                                                            className={cn(
+                                                                "transition-all duration-300 hover:scale-[1.02] active:scale-95 rounded-lg px-3 py-2 text-sm font-semibold",
+                                                                done
+                                                                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
+                                                                    : "bg-gradient-to-r from-blue-500 to-indigo-600 text-white shadow-md hover:shadow-lg"
+                                                            )}
+                                                        >
+                                                            {done ? 'Completed ✓' : 'Take Quiz'}
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </CardContent>
@@ -1131,6 +1181,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                         setQuizSession(null);
                     }}
                     onPassed={handleQuizPassed}
+                    onFailed={handleQuizFailed}
                     subject={quizSession.subject}
                     topic={quizSession.topic}
                 />

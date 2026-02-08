@@ -24,6 +24,12 @@ class NeuronChatService
      */
     public function createThread(User $user, ?string $title = null): ChatThread
     {
+        // Limit to 5 active threads per user
+        $activeThreadsCount = ChatThread::where('user_id', $user->id)->count();
+        if ($activeThreadsCount >= 5) {
+            throw new \RuntimeException('Maximum active chats reached (5). Please delete some existing chats first.');
+        }
+
         $providerThreadId = (string) Str::uuid();
 
         return ChatThread::create([
@@ -142,6 +148,13 @@ class NeuronChatService
         // Update thread last message timestamp
         $thread->update(['last_message_at' => Carbon::now()]);
 
+        // Generate smart title if this is the first message and title is default
+        if ($thread->title === 'New Chat') {
+            $context = $this->buildContext($user);
+            $smartTitle = $this->generateSmartTitle($message, $context);
+            $thread->update(['title' => $smartTitle]);
+        }
+
         // Get message history for context
         $history = $thread->messages()
             ->orderByDesc('created_at')
@@ -184,7 +197,7 @@ class NeuronChatService
             'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
             'messages' => $messages,
             'temperature' => 0.4,
-            'max_tokens' => 800,
+            'max_tokens' => 200,
             'stream' => true,
         ];
 
@@ -274,6 +287,13 @@ class NeuronChatService
         // Update thread last message timestamp
         $thread->update(['last_message_at' => Carbon::now()]);
 
+        // Generate smart title if this is the first message and title is default
+        if ($thread->title === 'New Chat') {
+            $context = $this->buildContext($user);
+            $smartTitle = $this->generateSmartTitle($message, $context);
+            $thread->update(['title' => $smartTitle]);
+        }
+
         // Get message history
         $history = $thread->messages()
             ->orderByDesc('created_at')
@@ -313,7 +333,7 @@ class NeuronChatService
             'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
             'messages' => $messages,
             'temperature' => 0.4,
-            'max_tokens' => 800,
+            'max_tokens' => 200,
             'stream' => false,
         ];
 
@@ -540,5 +560,47 @@ class NeuronChatService
             'recent_sessions' => $recentSessions,
             'generated_at' => now()->toIso8601String(),
         ];
+    }
+
+    /**
+     * Generate a smart title for a chat thread based on the first message.
+     */
+    protected function generateSmartTitle(string $message, array $context): string
+    {
+        $subjects = $context['user']['subjects'] ?? [];
+        $messageLower = strtolower($message);
+
+        // Try to match subject from user's enrolled subjects
+        $matchedSubject = null;
+        foreach ($subjects as $subject) {
+            $subjectLower = strtolower($subject);
+            if (str_contains($messageLower, $subjectLower)) {
+                $matchedSubject = $subject;
+                break;
+            }
+        }
+
+        // Extract key topic from message (remove common words)
+        $commonWords = ['what', 'how', 'can', 'you', 'explain', 'help', 'me', 'with', 'about', 'the', 'a', 'an', 'is', 'are', 'should', 'i', 'study', 'my', 'on', 'for', 'in', 'to'];
+        $words = explode(' ', preg_replace('/[^\w\s]/', '', $messageLower));
+        $keywords = array_filter($words, fn($w) => strlen($w) > 2 && !in_array($w, $commonWords));
+
+        // Build title
+        $title = '';
+        if ($matchedSubject) {
+            // Subject found in message
+            $topic = implode(' ', array_slice(array_values($keywords), 0, 3));
+            $title = $matchedSubject;
+            if ($topic) {
+                $title .= ': ' . ucfirst($topic);
+            }
+        } else {
+            // No subject match, use keywords
+            $topic = implode(' ', array_slice(array_values($keywords), 0, 4));
+            $title = $topic ? ucfirst($topic) : 'New Chat';
+        }
+
+        // Truncate to reasonable length
+        return Str::limit($title, 40);
     }
 }
