@@ -5,6 +5,10 @@ use App\Http\Middleware\EnsureOnboarded;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
 
+// Include debug routes
+require __DIR__.'/debug_quiz.php';
+require __DIR__.'/debug_quiz_generate.php';
+
 Route::get('/', function () {
     return Inertia::render('welcome', [
         'canRegister' => Features::enabled(Features::registration()),

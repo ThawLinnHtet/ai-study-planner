@@ -48,6 +48,16 @@ Generate exactly {$count} multiple-choice questions about:
 - Topic: {$topic}
 - Difficulty: {$difficulty}
 
+IMPORTANT - Comprehensive Coverage:
+- First, identify the key sub-topics/concepts within "{$topic}"
+- Then distribute your {$count} questions across these key sub-topics
+- Each question should cover a DIFFERENT aspect/sub-topic
+- Do NOT ask multiple questions about the same concept
+- Aim to test the breadth of the topic, not just one narrow area
+
+For example, if the topic is "AWS IAM", cover areas like:
+  Users/Groups, Roles, Policies, MFA, Access Keys (not just one of these)
+
 Requirements:
 1. Each question must have exactly 4 options labeled A, B, C, D
 2. Only one option should be correct
@@ -55,6 +65,7 @@ Requirements:
 4. Include a brief explanation for why the correct answer is right
 5. Make wrong options plausible but clearly incorrect
 6. Questions should be appropriate for a student studying this topic
+7. Mix question types: conceptual, practical/scenario-based, and comparison
 PROMPT;
 
         return $this->structured(new UserMessage($prompt));

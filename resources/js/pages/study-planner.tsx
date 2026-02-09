@@ -1175,6 +1175,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
             {/* Quiz Modal */}
             {quizSession && (
                 <QuizModal
+                    key={`${quizSession.subject}-${quizSession.topic}`}
                     open={quizOpen}
                     onClose={() => {
                         setQuizOpen(false);

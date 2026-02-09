@@ -26,20 +26,27 @@ class QuizController extends Controller
         $validated = $request->validate([
             'subject' => ['required', 'string'],
             'topic' => ['required', 'string'],
+            'forceNew' => ['boolean'],
         ]);
 
         $user = $request->user();
+        $forceNew = $validated['forceNew'] ?? false;
 
-        // Check for existing cached quiz (not yet completed/passed)
-        $existingQuiz = Quiz::where('user_id', $user->id)
-            ->whereJsonContains('settings->subject', $validated['subject'])
-            ->whereJsonContains('settings->topic', $validated['topic'])
-            ->where('created_at', '>=', now()->subHours(24))
-            ->whereDoesntHave('results', function ($q) {
-                $q->where('percentage', '>=', 80);
-            })
-            ->latest()
-            ->first();
+        // Check for existing cached quiz (not yet completed/passed) - only if not forcing new
+        $existingQuiz = null;
+        if (!$forceNew) {
+            $existingQuiz = Quiz::where('user_id', $user->id)
+                ->where('created_at', '>=', now()->subHours(24))
+                ->whereDoesntHave('results', function ($q) {
+                    $q->where('percentage', '>=', 80);
+                })
+                ->where(function($query) use ($validated) {
+                    $query->where('title', 'like', '%' . $validated['subject'] . '%')
+                          ->orWhere('title', 'like', '%' . $validated['topic'] . '%');
+                })
+                ->latest()
+                ->first();
+        }
 
         if ($existingQuiz) {
             $safeQuestions = array_map(fn ($q) => [

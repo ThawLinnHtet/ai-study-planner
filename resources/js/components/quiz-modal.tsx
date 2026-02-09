@@ -9,7 +9,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Loader2, RotateCcw, Trophy, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, RotateCcw, Trophy, AlertTriangle, BookOpen } from 'lucide-react';
 
 interface QuizOption {
     label: string;
@@ -19,6 +19,8 @@ interface QuizOption {
 interface QuizQuestion {
     question: string;
     options: QuizOption[];
+    correct_answer: string;
+    explanation: string;
 }
 
 interface ReviewItem {
@@ -51,9 +53,11 @@ interface QuizModalProps {
     topic: string;
 }
 
-type Phase = 'loading' | 'quiz' | 'submitting' | 'result';
+type Phase = 'loading' | 'quiz' | 'submitting' | 'result' | 'review';
 
-const STORAGE_KEY = 'quiz_progress';
+function getStorageKey(subject: string, topic: string): string {
+    return `quiz_progress:${subject}:${topic}`;
+}
 
 interface StoredQuizState {
     quizId: number;
@@ -67,33 +71,29 @@ interface StoredQuizState {
 
 function saveQuizProgress(state: StoredQuizState) {
     try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        localStorage.setItem(getStorageKey(state.subject, state.topic), JSON.stringify(state));
     } catch { /* ignore storage errors */ }
 }
 
 function loadQuizProgress(subject: string, topic: string): StoredQuizState | null {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const key = getStorageKey(subject, topic);
+        const raw = localStorage.getItem(key);
         if (!raw) return null;
         const state: StoredQuizState = JSON.parse(raw);
-        // Only restore if same subject+topic and less than 24 hours old
-        if (
-            state.subject === subject &&
-            state.topic === topic &&
-            Date.now() - state.timestamp < 24 * 60 * 60 * 1000
-        ) {
+        if (Date.now() - state.timestamp < 24 * 60 * 60 * 1000) {
             return state;
         }
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(key);
         return null;
     } catch {
         return null;
     }
 }
 
-function clearQuizProgress() {
+function clearQuizProgress(subject: string, topic: string) {
     try {
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(getStorageKey(subject, topic));
     } catch { /* ignore */ }
 }
 
@@ -106,6 +106,13 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
     const [result, setResult] = useState<QuizResult | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [initialized, setInitialized] = useState(false);
+    const [passPercentage, setPassPercentage] = useState(80);
+    const [reviewData, setReviewData] = useState<Array<{
+        question: QuizQuestion;
+        userAnswer: string;
+        isCorrect: boolean;
+        explanation: string;
+    }>>([]);
 
     const reset = (clearStorage = true) => {
         setPhase('loading');
@@ -116,7 +123,25 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
         setResult(null);
         setError(null);
         setInitialized(false);
-        if (clearStorage) clearQuizProgress();
+        setPassPercentage(80);
+        setReviewData([]);
+        if (clearStorage) clearQuizProgress(subject, topic);
+    };
+
+    const calculateReviewData = () => {
+        const review = questions.map((question, index) => {
+            const userAnswer = answers[index];
+            const isCorrect = userAnswer?.toUpperCase() === question.correct_answer?.toUpperCase();
+
+            return {
+                question,
+                userAnswer: userAnswer || 'Not answered',
+                isCorrect,
+                explanation: question.explanation || 'No explanation available'
+            };
+        });
+
+        setReviewData(review);
     };
 
     const generateQuiz = useCallback(async (forceNew = false) => {
@@ -131,6 +156,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                 setQuestions(saved.questions);
                 setCurrentIndex(saved.currentIndex);
                 setAnswers(saved.answers);
+                setPassPercentage(80); // Default when restoring from cache
                 setPhase('quiz');
                 setInitialized(true);
                 return;
@@ -145,7 +171,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                     'X-CSRF-TOKEN': document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
                     'Accept': 'application/json',
                 },
-                body: JSON.stringify({ subject, topic }),
+                body: JSON.stringify({ subject, topic, forceNew }),
             });
 
             if (!res.ok) throw new Error('Failed to generate quiz');
@@ -153,6 +179,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
             const data = await res.json();
             setQuizId(data.quiz_id);
             setQuestions(data.questions);
+            setPassPercentage(data.pass_percentage || 80);
             setPhase('quiz');
             setInitialized(true);
 
@@ -193,8 +220,9 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
 
             const data: QuizResult = await res.json();
             setResult(data);
+            calculateReviewData(); // Calculate review data for review mode
             setPhase('result');
-            clearQuizProgress();
+            clearQuizProgress(subject, topic);
         } catch {
             setError('Failed to submit quiz. Please try again.');
             setPhase('quiz');
@@ -226,9 +254,23 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
     // Auto-generate/restore when modal opens
     useEffect(() => {
         if (open && !initialized && phase === 'loading' && !error) {
-            generateQuiz();
+            // Check if we have saved progress first
+            const saved = loadQuizProgress(subject, topic);
+            if (saved) {
+                // Restore saved progress
+                setQuizId(saved.quizId);
+                setQuestions(saved.questions);
+                setCurrentIndex(saved.currentIndex);
+                setAnswers(saved.answers);
+                setPassPercentage(80);
+                setPhase('quiz');
+                setInitialized(true);
+            } else {
+                // Generate new quiz if no saved data
+                generateQuiz(false);
+            }
         }
-    }, [open, initialized, phase, error, generateQuiz]);
+    }, [open, initialized, phase, error, generateQuiz, subject, topic]);
 
     const currentQuestion = questions[currentIndex];
     const allAnswered = questions.length > 0 && Object.keys(answers).length === questions.length;
@@ -238,22 +280,34 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
             <DialogContent showCloseButton={phase !== 'submitting'} className="sm:max-w-lg">
                 {/* Loading Phase */}
                 {phase === 'loading' && (
-                    <div className="flex flex-col items-center justify-center py-12 gap-4">
-                        <Loader2 className="size-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">Generating quiz for {topic}...</p>
-                    </div>
+                    <>
+                        <DialogHeader className="sr-only">
+                            <DialogTitle>Loading Quiz</DialogTitle>
+                            <DialogDescription>Generating quiz questions for {subject}: {topic}</DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col items-center justify-center py-12 gap-4">
+                            <Loader2 className="size-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground">Generating quiz for {topic}...</p>
+                        </div>
+                    </>
                 )}
 
                 {/* Error State */}
                 {error && phase !== 'result' && (
-                    <div className="flex flex-col items-center justify-center py-8 gap-4">
-                        <AlertTriangle className="size-8 text-destructive" />
-                        <p className="text-sm text-destructive text-center">{error}</p>
-                        <Button onClick={() => generateQuiz()} variant="outline" size="sm">
-                            <RotateCcw className="size-4 mr-2" />
-                            Try Again
-                        </Button>
-                    </div>
+                    <>
+                        <DialogHeader className="sr-only">
+                            <DialogTitle>Quiz Error</DialogTitle>
+                            <DialogDescription>There was an error generating the quiz. Please try again.</DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col items-center justify-center py-8 gap-4">
+                            <AlertTriangle className="size-8 text-destructive" />
+                            <p className="text-sm text-destructive text-center">{error}</p>
+                            <Button onClick={() => generateQuiz()} variant="outline" size="sm">
+                                <RotateCcw className="size-4 mr-2" />
+                                Try Again
+                            </Button>
+                        </div>
+                    </>
                 )}
 
                 {/* Quiz Phase */}
@@ -264,7 +318,7 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                                 {subject}: {topic}
                             </DialogTitle>
                             <DialogDescription>
-                                Question {currentIndex + 1} of {questions.length} — Score 75%+ to complete
+                                Question {currentIndex + 1} of {questions.length} — Score {passPercentage}%+ to complete
                             </DialogDescription>
                         </DialogHeader>
 
@@ -328,10 +382,16 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
 
                 {/* Submitting Phase */}
                 {phase === 'submitting' && (
-                    <div className="flex flex-col items-center justify-center py-12 gap-4">
-                        <Loader2 className="size-8 animate-spin text-primary" />
-                        <p className="text-sm text-muted-foreground">Checking your answers...</p>
-                    </div>
+                    <>
+                        <DialogHeader className="sr-only">
+                            <DialogTitle>Submitting Quiz</DialogTitle>
+                            <DialogDescription>Checking your answers and calculating results...</DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-col items-center justify-center py-12 gap-4">
+                            <Loader2 className="size-8 animate-spin text-primary" />
+                            <p className="text-sm text-muted-foreground">Checking your answers...</p>
+                        </div>
+                    </>
                 )}
 
                 {/* Result Phase */}
@@ -386,33 +446,24 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                         </div>
 
                         <DialogFooter>
-                            {result.passed ? (
+                            <div className="flex gap-2 w-full">
                                 <Button
-                                    onClick={() => onPassed(result.result_id)}
-                                    className="w-full"
+                                    variant="outline"
+                                    onClick={() => setPhase('review')}
+                                    className="flex-1"
                                 >
-                                    <CheckCircle2 className="size-4 mr-2" />
-                                    Mark Session Complete
+                                    <BookOpen className="size-4 mr-2" />
+                                    Review Answers
                                 </Button>
-                            ) : (
-                                <div className="flex gap-2 w-full">
+                                {result.passed ? (
                                     <Button
-                                        variant="outline"
-                                        onClick={onClose}
+                                        onClick={() => onPassed(result.result_id)}
                                         className="flex-1"
                                     >
-                                        Close
+                                        <CheckCircle2 className="size-4 mr-2" />
+                                        Mark Session Complete
                                     </Button>
-                                    {onFailed && (
-                                        <Button
-                                            variant="secondary"
-                                            onClick={onFailed}
-                                            className="flex-1"
-                                        >
-                                            <CheckCircle2 className="size-4 mr-2" />
-                                            Complete Anyway
-                                        </Button>
-                                    )}
+                                ) : (
                                     <Button
                                         onClick={() => generateQuiz(true)}
                                         className="flex-1"
@@ -420,8 +471,88 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                                         <RotateCcw className="size-4 mr-2" />
                                         Retry Quiz
                                     </Button>
+                                )}
+                            </div>
+                        </DialogFooter>
+                    </>
+                )}
+
+                {/* Review Phase */}
+                {phase === 'review' && (
+                    <>
+                        <DialogHeader>
+                            <DialogTitle className="text-center">Review Your Answers</DialogTitle>
+                            <DialogDescription className="text-center">
+                                Go through each question to see your answers and explanations
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="space-y-4 max-h-96 overflow-y-auto">
+                            {reviewData.map((item, index) => (
+                                <div
+                                    key={index}
+                                    className={cn(
+                                        'p-4 rounded-lg border',
+                                        item.isCorrect
+                                            ? 'border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950'
+                                            : 'border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950'
+                                    )}
+                                >
+                                    <div className="space-y-3">
+                                        <div className="flex items-start gap-2">
+                                            {item.isCorrect ? (
+                                                <CheckCircle2 className="size-5 text-green-600 dark:text-green-400 shrink-0 mt-0.5" />
+                                            ) : (
+                                                <XCircle className="size-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                                            )}
+                                            <div className="flex-1">
+                                                <p className="font-medium text-sm">Question {index + 1}</p>
+                                                <p className="text-sm mt-1">{item.question.question}</p>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-2 ml-7">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {item.question.options.map((option) => (
+                                                    <div
+                                                        key={option.label}
+                                                        className={cn(
+                                                            'p-2 rounded border text-xs',
+                                                            option.label === item.question.correct_answer
+                                                                ? 'border-green-500 bg-green-100 dark:bg-green-900'
+                                                                : option.label === item.userAnswer
+                                                                    ? 'border-red-500 bg-red-100 dark:bg-red-900'
+                                                                    : 'border-gray-200 bg-gray-50 dark:bg-gray-800'
+                                                        )}
+                                                    >
+                                                        <span className="font-medium">{option.label}.</span> {option.text}
+                                                        {option.label === item.question.correct_answer && (
+                                                            <span className="ml-1 text-green-600 dark:text-green-400">✓</span>
+                                                        )}
+                                                        {option.label === item.userAnswer && !item.isCorrect && (
+                                                            <span className="ml-1 text-red-600 dark:text-red-400">✗</span>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="bg-blue-50 dark:bg-blue-950 p-3 rounded-lg">
+                                                <p className="text-xs font-medium text-blue-800 dark:text-blue-200 mb-1">Explanation:</p>
+                                                <p className="text-xs text-blue-700 dark:text-blue-300">{item.explanation}</p>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
-                            )}
+                            ))}
+                        </div>
+
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setPhase('result')} className="flex-1">
+                                Back to Results
+                            </Button>
+                            <Button onClick={onClose} className="flex-1">
+                                Close
+                            </Button>
                         </DialogFooter>
                     </>
                 )}
