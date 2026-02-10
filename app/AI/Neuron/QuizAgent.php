@@ -42,11 +42,16 @@ class QuizAgent extends Agent
      */
     public function generate(string $subject, string $topic, int $count = 4, string $difficulty = 'medium'): QuizOutput
     {
+        $randomSeed = time() . rand(1000, 9999);
+        $currentTimestamp = date('Y-m-d H:i:s');
+        
         $prompt = <<<PROMPT
 Generate exactly {$count} multiple-choice questions about:
 - Subject: {$subject}
 - Topic: {$topic}
 - Difficulty: {$difficulty}
+- Request ID: {$randomSeed}
+- Current Time: {$currentTimestamp}
 
 IMPORTANT - Comprehensive Coverage:
 - First, identify the key sub-topics/concepts within "{$topic}"
@@ -54,6 +59,7 @@ IMPORTANT - Comprehensive Coverage:
 - Each question should cover a DIFFERENT aspect/sub-topic
 - Do NOT ask multiple questions about the same concept
 - Aim to test the breadth of the topic, not just one narrow area
+- Generate UNIQUE questions that you haven't generated before
 
 For example, if the topic is "AWS IAM", cover areas like:
   Users/Groups, Roles, Policies, MFA, Access Keys (not just one of these)
@@ -66,6 +72,7 @@ Requirements:
 5. Make wrong options plausible but clearly incorrect
 6. Questions should be appropriate for a student studying this topic
 7. Mix question types: conceptual, practical/scenario-based, and comparison
+8. Ensure variety - avoid repetitive question patterns or similar scenarios
 PROMPT;
 
         return $this->structured(new UserMessage($prompt));

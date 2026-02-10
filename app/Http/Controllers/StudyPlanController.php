@@ -241,5 +241,48 @@ class StudyPlanController extends Controller
         return back();
     }
 
+    /**
+     * Complete a study session after passing a quiz
+     */
+    public function completeQuiz(Request $request, int $resultId): RedirectResponse
+    {
+        $user = $request->user();
+        
+        // Verify quiz result belongs to user and is passed
+        $quizResult = $user->quizResults()
+            ->where('id', $resultId)
+            ->first();
+
+        if (!$quizResult || $quizResult->percentage < 80) {
+            return back()->withErrors(['quiz' => 'Invalid or failed quiz result.']);
+        }
+
+        // Extract subject and topic from quiz result meta
+        $subject = $quizResult->meta['subject'] ?? 'Unknown';
+        $topic = $quizResult->meta['topic'] ?? 'Unknown';
+
+        // Create completed study session
+        $session = $user->studySessions()->create([
+            'subject_id' => null,
+            'study_plan_id' => $user->studyPlans()->where('status', 'active')->value('id'),
+            'started_at' => $quizResult->taken_at ?? now(),
+            'duration_minutes' => 60, // Default duration
+            'type' => 'study',
+            'status' => 'completed',
+            'notes' => "Completed session: {$topic}",
+            'meta' => [
+                'subject_name' => $subject,
+                'topic_name' => $topic,
+                'quiz_result_id' => $quizResult->id,
+                'quiz_percentage' => $quizResult->percentage,
+            ],
+        ]);
+
+        // Link quiz result to study session
+        $quizResult->update(['study_session_id' => $session->id]);
+
+        return redirect()->route('study-planner')->with('success', 'Study session completed successfully!');
+    }
+
 
 }

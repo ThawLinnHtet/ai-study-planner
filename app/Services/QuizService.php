@@ -54,6 +54,59 @@ class QuizService
     }
 
     /**
+     * Generate a comprehensive quiz covering multiple topics for a study session.
+     */
+    public function generateForStudySession(User $user, string $subject, array $topics): Quiz
+    {
+        $questionsPerTopic = max(1, floor(self::QUESTIONS_PER_QUIZ / count($topics)));
+        $allQuestions = [];
+
+        foreach ($topics as $topic) {
+            $agent = QuizAgent::make();
+            $output = $agent->generate(
+                subject: $subject,
+                topic: $topic,
+                count: $questionsPerTopic,
+                difficulty: 'medium',
+            );
+
+            $topicQuestions = array_map(fn ($q) => [
+                'question' => $q->question,
+                'options' => array_map(fn ($o) => [
+                    'label' => $o->label,
+                    'text' => $o->text,
+                ], $q->options),
+                'correct_answer' => $q->correct_answer,
+                'explanation' => $q->explanation,
+                'topic' => $topic, // Track which topic each question belongs to
+            ], $output->questions);
+
+            $allQuestions = array_merge($allQuestions, $topicQuestions);
+        }
+
+        // Shuffle questions to mix topics
+        shuffle($allQuestions);
+
+        $activePlanId = $user->studyPlans()->where('status', 'active')->value('id');
+        $topicsList = implode(', ', $topics);
+
+        return Quiz::create([
+            'user_id' => $user->id,
+            'study_plan_id' => $activePlanId,
+            'title' => "{$subject}: Study Session Quiz",
+            'description' => "Comprehensive quiz covering: {$topicsList}",
+            'difficulty' => 'medium',
+            'total_questions' => count($allQuestions),
+            'questions' => $allQuestions,
+            'settings' => [
+                'subject' => $subject,
+                'topics' => $topics,
+                'pass_percentage' => self::PASS_PERCENTAGE,
+            ],
+        ]);
+    }
+
+    /**
      * Submit quiz answers and calculate results.
      */
     public function submitAnswers(User $user, Quiz $quiz, array $answers, ?int $studySessionId = null): QuizResult

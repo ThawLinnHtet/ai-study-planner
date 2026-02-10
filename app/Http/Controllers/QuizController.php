@@ -25,7 +25,7 @@ class QuizController extends Controller
     {
         $validated = $request->validate([
             'subject' => ['required', 'string'],
-            'topic' => ['required', 'string'],
+            'topic' => ['nullable', 'string'],
             'forceNew' => ['boolean'],
         ]);
 
@@ -41,8 +41,10 @@ class QuizController extends Controller
                     $q->where('percentage', '>=', 80);
                 })
                 ->where(function($query) use ($validated) {
-                    $query->where('title', 'like', '%' . $validated['subject'] . '%')
-                          ->orWhere('title', 'like', '%' . $validated['topic'] . '%');
+                    $query->where('title', 'like', '%' . $validated['subject'] . '%');
+                    if (!empty($validated['topic'])) {
+                        $query->orWhere('title', 'like', '%' . $validated['topic'] . '%');
+                    }
                 })
                 ->latest()
                 ->first();
@@ -68,7 +70,7 @@ class QuizController extends Controller
             $quiz = $this->quizService->generateForSession(
                 user: $user,
                 subject: $validated['subject'],
-                topic: $validated['topic'],
+                topic: $validated['topic'] ?? '',
             );
 
             // Strip correct answers before sending to frontend
@@ -84,9 +86,7 @@ class QuizController extends Controller
                 'questions' => $safeQuestions,
                 'pass_percentage' => $this->quizService->getPassPercentage(),
             ]);
-        } catch (\Throwable $e) {
-            report($e);
-
+        } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to generate quiz. Please try again.',
             ], 500);

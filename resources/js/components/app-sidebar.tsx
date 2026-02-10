@@ -1,13 +1,11 @@
 import { Link } from '@inertiajs/react';
 import {
     BookOpen,
-    Bot,
     CalendarClock,
     Folder,
     LayoutGrid,
     LineChart,
     Settings,
-    SpellCheck,
 } from 'lucide-react';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
@@ -22,7 +20,7 @@ import {
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { useCurrentUrl } from '@/hooks/use-current-url';
-import { dashboard, progress, quizzes, studyPlanner } from '@/routes';
+import { dashboard, progress, studyPlanner } from '@/routes';
 import { overview as settingsOverview } from '@/routes/settings';
 import type { NavItem } from '@/types';
 import AppLogo from './app-logo';
@@ -53,11 +51,6 @@ export function AppSidebar() {
             title: 'Study Planner',
             href: studyPlanner(),
             icon: CalendarClock,
-        },
-        {
-            title: 'Quizzes',
-            href: quizzes(),
-            icon: SpellCheck,
         },
         {
             title: 'Progress',

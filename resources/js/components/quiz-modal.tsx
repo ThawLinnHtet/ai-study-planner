@@ -446,32 +446,41 @@ export default function QuizModal({ open, onClose, onPassed, onFailed, subject, 
                         </div>
 
                         <DialogFooter>
-                            <div className="flex gap-2 w-full">
+                            <div className="flex flex-col gap-2 w-full">
+                                <div className="flex gap-2 w-full">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setPhase('review')}
+                                        className="flex-1"
+                                    >
+                                        <BookOpen className="size-4 mr-2" />
+                                        Review Answers
+                                    </Button>
+                                    {result.passed ? (
+                                        <Button
+                                            onClick={() => onPassed(result.result_id)}
+                                            className="flex-1"
+                                        >
+                                            <CheckCircle2 className="size-4 mr-2" />
+                                            Mark Session Complete
+                                        </Button>
+                                    ) : (
+                                        <Button
+                                            onClick={() => generateQuiz(true)}
+                                            className="flex-1"
+                                        >
+                                            <RotateCcw className="size-4 mr-2" />
+                                            Retry Quiz
+                                        </Button>
+                                    )}
+                                </div>
                                 <Button
-                                    variant="outline"
-                                    onClick={() => setPhase('review')}
-                                    className="flex-1"
+                                    variant="ghost"
+                                    onClick={onClose}
+                                    className="w-full text-muted-foreground"
                                 >
-                                    <BookOpen className="size-4 mr-2" />
-                                    Review Answers
+                                    Continue Studying
                                 </Button>
-                                {result.passed ? (
-                                    <Button
-                                        onClick={() => onPassed(result.result_id)}
-                                        className="flex-1"
-                                    >
-                                        <CheckCircle2 className="size-4 mr-2" />
-                                        Mark Session Complete
-                                    </Button>
-                                ) : (
-                                    <Button
-                                        onClick={() => generateQuiz(true)}
-                                        className="flex-1"
-                                    >
-                                        <RotateCcw className="size-4 mr-2" />
-                                        Retry Quiz
-                                    </Button>
-                                )}
                             </div>
                         </DialogFooter>
                     </>

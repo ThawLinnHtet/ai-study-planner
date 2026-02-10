@@ -1,12 +1,11 @@
 import { Head } from '@inertiajs/react';
-import { format, parseISO } from 'date-fns';
-import { Award, Flame, Sparkles, Target, Timer } from 'lucide-react';
+import { format, parseISO, formatDistanceToNow } from 'date-fns';
+import { Award, CheckCircle2, Flame, Sparkles, SpellCheck, Target, Timer, TrendingUp, XCircle } from 'lucide-react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import AppLayout from '@/layouts/app-layout';
-import { progress } from '@/routes';
 import type { BreadcrumbItem } from '@/types';
 import {
     Area,
@@ -23,7 +22,7 @@ import {
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Progress',
-        href: progress().url,
+        href: '/progress',
     },
 ];
 
@@ -67,8 +66,86 @@ type ProgressStats = {
     insight: string;
 };
 
+type QuizHistoryItem = {
+    id: number;
+    subject: string;
+    topic: string;
+    percentage: number;
+    passed: boolean;
+    correct_count: number;
+    incorrect_count: number;
+    skipped_count: number;
+    total_questions: number;
+    taken_at: string | null;
+};
+
+type SubjectBreakdown = {
+    subject: string;
+    total: number;
+    passed: number;
+    average: number;
+};
+
+type QuizStats = {
+    total: number;
+    passed: number;
+    failed: number;
+    average_score: number;
+    pass_rate: number;
+    subject_breakdown: SubjectBreakdown[];
+    trends: QuizTrends;
+    performance: QuizPerformance;
+};
+
+type QuizTrends = {
+    score_trend: Array<{
+        date: string;
+        score: number;
+        subject: string;
+        topic: string;
+    }>;
+    completion_trend: Array<{
+        date: string;
+        completed: number;
+        attempted: number;
+    }>;
+    subject_performance: Array<{
+        subject: string;
+        average_score: number;
+        improvement_rate: number;
+        trend: 'up' | 'down' | 'stable';
+    }>;
+};
+
+type QuizPerformance = {
+    best_score: number;
+    worst_score: number;
+    most_recent_score: number;
+    average_last_5: number;
+    average_last_10: number;
+    improvement_rate: number;
+    consistency_score: number;
+    weak_areas: Array<{
+        subject: string;
+        topic: string;
+        average_score: number;
+        attempts: number;
+        improvement_needed: boolean;
+    }>;
+    strong_areas: Array<{
+        subject: string;
+        topic: string;
+        average_score: number;
+        attempts: number;
+        mastery_level: string;
+    }>;
+};
+
 interface Props {
     progress: ProgressStats;
+    quizHistory: QuizHistoryItem[];
+    quizStats: QuizStats;
+    quizTrends?: QuizTrends;
 }
 
 function formatMinutes(minutes: number): string {
@@ -79,7 +156,7 @@ function formatMinutes(minutes: number): string {
     return r === 0 ? `${h}h` : `${h}h ${r}m`;
 }
 
-export default function ProgressPage({ progress: stats }: Props) {
+export default function ProgressPage({ progress: stats, quizHistory, quizStats, quizTrends }: Props) {
     const xpToNext = Math.max(0, stats.xp.next_level_at - stats.xp.total);
 
     return (
@@ -169,31 +246,40 @@ export default function ProgressPage({ progress: stats }: Props) {
                         </CardHeader>
                         <CardContent className="space-y-6">
                             <div className="h-[220px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height={220}>
                                     <AreaChart data={stats.series} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="xpFill" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.35} />
-                                                <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity={0} />
+                                                <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8} />
+                                                <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0.1} />
                                             </linearGradient>
                                         </defs>
                                         <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                                         <XAxis
                                             dataKey="date"
-                                            tickFormatter={(d) => format(parseISO(d), 'MMM d')}
                                             tick={{ fontSize: 11 }}
-                                            axisLine={false}
                                             tickLine={false}
-                                            interval="preserveStartEnd"
+                                            axisLine={false}
                                         />
-                                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={36} />
+                                        <YAxis
+                                            tick={{ fontSize: 11 }}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(value) => `${value}`}
+                                        />
                                         <RechartsTooltip
-                                            contentStyle={{
-                                                background: 'hsl(var(--popover))',
-                                                border: '1px solid hsl(var(--border))',
-                                                borderRadius: 12,
+                                            content={({ active, payload }) => {
+                                                if (active && payload?.length) {
+                                                    const data = payload[0].payload;
+                                                    return (
+                                                        <div className="bg-background border rounded-lg p-2 shadow-lg">
+                                                            <p className="text-sm font-medium">{format(parseISO(data.date), 'MMM d')}</p>
+                                                            <p className="text-sm text-muted-foreground">{data.xp} XP</p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
                                             }}
-                                            labelFormatter={(d) => format(parseISO(String(d)), 'eeee, MMM d')}
                                         />
                                         <Area
                                             type="monotone"
@@ -207,26 +293,34 @@ export default function ProgressPage({ progress: stats }: Props) {
                             </div>
 
                             <div className="h-[180px]">
-                                <ResponsiveContainer width="100%" height="100%">
+                                <ResponsiveContainer width="100%" height={180}>
                                     <BarChart data={stats.series} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                                         <XAxis
                                             dataKey="date"
-                                            tickFormatter={(d) => format(parseISO(d), 'MMM d')}
                                             tick={{ fontSize: 11 }}
-                                            axisLine={false}
                                             tickLine={false}
-                                            interval="preserveStartEnd"
+                                            axisLine={false}
                                         />
-                                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} width={36} />
+                                        <YAxis
+                                            tick={{ fontSize: 11 }}
+                                            tickLine={false}
+                                            axisLine={false}
+                                            tickFormatter={(value) => `${value}`}
+                                        />
                                         <RechartsTooltip
-                                            contentStyle={{
-                                                background: 'hsl(var(--popover))',
-                                                border: '1px solid hsl(var(--border))',
-                                                borderRadius: 12,
+                                            content={({ active, payload }) => {
+                                                if (active && payload?.length) {
+                                                    const data = payload[0].payload;
+                                                    return (
+                                                        <div className="bg-background border rounded-lg p-2 shadow-lg">
+                                                            <p className="text-sm font-medium">{format(parseISO(data.date), 'MMM d')}</p>
+                                                            <p className="text-sm text-muted-foreground">{formatMinutes(data.minutes)}</p>
+                                                        </div>
+                                                    );
+                                                }
+                                                return null;
                                             }}
-                                            labelFormatter={(d) => format(parseISO(String(d)), 'eeee, MMM d')}
-                                            formatter={(value) => [`${value} min`, 'Minutes']}
                                         />
                                         <Bar dataKey="minutes" radius={[8, 8, 0, 0]} fill="hsl(var(--primary))" opacity={0.85} />
                                     </BarChart>
@@ -266,6 +360,371 @@ export default function ProgressPage({ progress: stats }: Props) {
                             ))}
                         </CardContent>
                     </Card>
+                </div>
+
+                {/* Quiz Performance Section */}
+                <div className="space-y-6">
+                    <Heading
+                        title="Quiz Performance"
+                        description="Your quiz results, scores, and subject mastery"
+                    />
+
+                    {/* Quiz Stats Cards */}
+                    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                        <Card>
+                            <CardContent className="pt-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Total Quizzes</p>
+                                        <p className="text-2xl font-black mt-1">{quizStats.total}</p>
+                                    </div>
+                                    <SpellCheck className="w-5 h-5 text-primary" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="pt-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Pass Rate</p>
+                                        <p className="text-2xl font-black mt-1">{quizStats.pass_rate}%</p>
+                                    </div>
+                                    <TrendingUp className="w-5 h-5 text-green-500" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="pt-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Avg Score</p>
+                                        <p className="text-2xl font-black mt-1">{quizStats.average_score}%</p>
+                                    </div>
+                                    <Target className="w-5 h-5 text-blue-500" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                        <Card>
+                            <CardContent className="pt-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <p className="text-xs text-muted-foreground uppercase tracking-wider">Passed</p>
+                                        <p className="text-2xl font-black mt-1">
+                                            <span className="text-green-600">{quizStats.passed}</span>
+                                            <span className="text-muted-foreground text-sm font-normal"> / {quizStats.total}</span>
+                                        </p>
+                                    </div>
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Quiz Performance Trends */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        {/* Score Trend Chart */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <TrendingUp className="w-5 h-5 text-primary" />
+                                    Score Trends
+                                </CardTitle>
+                                <CardDescription>Your quiz scores over time</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {quizTrends?.score_trend && quizTrends.score_trend.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <AreaChart data={quizTrends.score_trend}>
+                                            <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                                            <XAxis
+                                                dataKey="date"
+                                                tick={{ fontSize: 12 }}
+                                                tickFormatter={(value) => format(parseISO(value), 'MMM d')}
+                                            />
+                                            <YAxis
+                                                tick={{ fontSize: 12 }}
+                                                domain={[0, 100]}
+                                            />
+                                            <RechartsTooltip
+                                                formatter={(value: any) => [`${value}%`, 'Score']}
+                                                labelFormatter={(value) => format(parseISO(value as string), 'MMM d, yyyy')}
+                                            />
+                                            <Area
+                                                type="monotone"
+                                                dataKey="score"
+                                                stroke="hsl(var(--primary))"
+                                                fill="hsl(var(--primary))"
+                                                fillOpacity={0.3}
+                                                strokeWidth={2}
+                                            />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                                        <div className="text-center">
+                                            <TrendingUp className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                            <p className="text-sm">No quiz data available yet</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Subject Performance */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Target className="w-5 h-5 text-primary" />
+                                    Subject Performance
+                                </CardTitle>
+                                <CardDescription>Average scores by subject</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {quizStats?.subject_breakdown && quizStats.subject_breakdown.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <BarChart data={quizStats.subject_breakdown}>
+                                            <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                                            <XAxis
+                                                dataKey="subject"
+                                                tick={{ fontSize: 12 }}
+                                                angle={-45}
+                                                textAnchor="end"
+                                                height={60}
+                                            />
+                                            <YAxis
+                                                tick={{ fontSize: 12 }}
+                                                domain={[0, 100]}
+                                            />
+                                            <RechartsTooltip
+                                                formatter={(value: any) => [`${value}%`, 'Average Score']}
+                                            />
+                                            <Bar
+                                                dataKey="average"
+                                                fill="hsl(var(--primary))"
+                                                radius={[4, 4, 0, 0]}
+                                            />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : (
+                                    <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+                                        <div className="text-center">
+                                            <Target className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                                            <p className="text-sm">No subject data available yet</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    {/* Performance Insights */}
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Recent Performance */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Flame className="w-5 h-5 text-orange-500" />
+                                    Recent Performance
+                                </CardTitle>
+                                <CardDescription>Last 10 quizzes average</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Last 5 Quizzes</span>
+                                        <span className="font-semibold">
+                                            {quizHistory.length >= 5
+                                                ? `${Math.round(quizHistory.slice(0, 5).reduce((sum, q) => sum + q.percentage, 0) / 5)}%`
+                                                : 'N/A'
+                                            }
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Last 10 Quizzes</span>
+                                        <span className="font-semibold">
+                                            {quizHistory.length >= 10
+                                                ? `${Math.round(quizHistory.slice(0, 10).reduce((sum, q) => sum + q.percentage, 0) / 10)}%`
+                                                : quizHistory.length > 0
+                                                    ? `${Math.round(quizHistory.reduce((sum, q) => sum + q.percentage, 0) / quizHistory.length)}%`
+                                                    : 'N/A'
+                                            }
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Best Score</span>
+                                        <span className="font-semibold text-green-600">
+                                            {quizHistory.length > 0
+                                                ? `${Math.max(...quizHistory.map(q => q.percentage))}%`
+                                                : 'N/A'
+                                            }
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Most Recent</span>
+                                        <span className="font-semibold">
+                                            {quizHistory.length > 0
+                                                ? `${quizHistory[0].percentage}%`
+                                                : 'N/A'
+                                            }
+                                        </span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Improvement Areas */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Award className="w-5 h-5 text-yellow-500" />
+                                    Strongest Areas
+                                </CardTitle>
+                                <CardDescription>Topics you excel at</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-2">
+                                    {quizStats?.subject_breakdown && quizStats.subject_breakdown.length > 0 ? (
+                                        quizStats.subject_breakdown
+                                            .sort((a, b) => b.average - a.average)
+                                            .slice(0, 3)
+                                            .map((subject, index) => (
+                                                <div key={subject.subject} className="flex items-center justify-between">
+                                                    <span className="text-sm font-medium">{subject.subject}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        <Progress value={subject.average} className="w-16 h-2" />
+                                                        <span className="text-sm font-semibold">{Math.round(subject.average)}%</span>
+                                                    </div>
+                                                </div>
+                                            ))
+                                    ) : (
+                                        <p className="text-sm text-muted-foreground text-center py-4">
+                                            Complete more quizzes to see your strongest areas
+                                        </p>
+                                    )}
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Completion Rate */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                    Completion Stats
+                                </CardTitle>
+                                <CardDescription>Quiz completion rates</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Pass Rate</span>
+                                        <span className="font-semibold text-green-600">{quizStats.pass_rate}%</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Total Passed</span>
+                                        <span className="font-semibold">{quizStats.passed}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Total Failed</span>
+                                        <span className="font-semibold text-red-600">{quizStats.failed}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-sm text-muted-foreground">Average Score</span>
+                                        <span className="font-semibold">{Math.round(quizStats.average_score)}%</span>
+                                    </div>
+                                </div>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        {/* Subject Mastery */}
+                        <Card>
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Target className="w-5 h-5 text-primary" />
+                                    Subject Mastery
+                                </CardTitle>
+                                <CardDescription>Performance breakdown by subject</CardDescription>
+                            </CardHeader>
+                            <CardContent className="space-y-3">
+                                {quizStats.subject_breakdown.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground text-center py-4">
+                                        No quizzes taken yet. Practice from the Study Planner to see your mastery here.
+                                    </p>
+                                ) : (
+                                    quizStats.subject_breakdown.map((s) => (
+                                        <div key={s.subject} className="space-y-2">
+                                            <div className="flex items-center justify-between text-sm">
+                                                <span className="font-medium truncate">{s.subject || 'Unknown'}</span>
+                                                <div className="flex items-center gap-2 shrink-0">
+                                                    <span className="text-muted-foreground text-xs">{s.passed}/{s.total} passed</span>
+                                                    <Badge variant={s.average >= 80 ? 'default' : 'secondary'} className="text-xs">
+                                                        {s.average}%
+                                                    </Badge>
+                                                </div>
+                                            </div>
+                                            <Progress value={s.average} className="h-2" />
+                                        </div>
+                                    ))
+                                )}
+                            </CardContent>
+                        </Card>
+
+                        {/* Recent Quiz History */}
+                        <Card className="lg:col-span-2">
+                            <CardHeader className="pb-2">
+                                <CardTitle className="flex items-center gap-2">
+                                    <SpellCheck className="w-5 h-5 text-primary" />
+                                    Recent Quizzes
+                                </CardTitle>
+                                <CardDescription>Your latest quiz attempts</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {quizHistory.length === 0 ? (
+                                    <p className="text-sm text-muted-foreground text-center py-8">
+                                        No quizzes taken yet. Go to the Study Planner and click "Take Quiz" on any session to get started!
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                        {quizHistory.map((quiz) => (
+                                            <div
+                                                key={quiz.id}
+                                                className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors"
+                                            >
+                                                <div className="shrink-0">
+                                                    {quiz.passed ? (
+                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
+                                                    ) : (
+                                                        <XCircle className="w-5 h-5 text-red-500" />
+                                                    )}
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2">
+                                                        <p className="text-sm font-medium truncate">
+                                                            {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {quiz.correct_count}/{quiz.total_questions} correct
+                                                        {quiz.taken_at && (
+                                                            <> &middot; {formatDistanceToNow(parseISO(quiz.taken_at), { addSuffix: true })}</>
+                                                        )}
+                                                    </p>
+                                                </div>
+                                                <Badge
+                                                    variant={quiz.passed ? 'default' : 'destructive'}
+                                                    className="shrink-0"
+                                                >
+                                                    {quiz.percentage}%
+                                                </Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </div>
                 </div>
             </div>
         </AppLayout>

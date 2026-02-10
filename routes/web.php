@@ -29,6 +29,9 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
     Route::post('study-plan/toggle-session', [\App\Http\Controllers\StudyPlanController::class, 'toggleSession'])
         ->name('study-plan.toggle-session');
 
+    Route::post('study-plan/complete-quiz/{resultId}', [\App\Http\Controllers\StudyPlanController::class, 'completeQuiz'])
+        ->name('study-plan.complete-quiz');
+
     
     Route::prefix('ai-tutor')->group(function () {
         Route::post('new-thread', [\App\Http\Controllers\AiTutorController::class, 'newThread'])
@@ -47,9 +50,12 @@ Route::middleware(['auth', 'verified', EnsureOnboarded::class])->group(function 
             ->name('ai-tutor.delete');
     });
 
-    Route::get('quizzes', function () {
-        return Inertia::render('quizzes');
-    })->name('quizzes');
+    Route::get('quiz/practice', function () {
+        return Inertia::render('quiz-practice', [
+            'subject' => request('subject', 'General'),
+            'topic' => request('topic', 'Practice'),
+        ]);
+    })->name('quiz.practice');
 
     Route::prefix('quiz')->group(function () {
         Route::post('generate', [\App\Http\Controllers\QuizController::class, 'generate'])

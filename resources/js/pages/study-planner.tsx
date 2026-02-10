@@ -28,7 +28,6 @@ import {
     Sparkles,
     Link2,
     Trophy,
-    Target,
     Zap,
     TrendingUp,
     Crown,
@@ -48,7 +47,6 @@ import { toast } from '@/hooks/use-toast';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
-import QuizModal from '@/components/quiz-modal';
 
 interface Session {
     subject: string;
@@ -197,10 +195,6 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
         quiz_result_id: null as number | null,
     });
 
-    // Quiz modal state
-    const [quizOpen, setQuizOpen] = useState(false);
-    const [quizSession, setQuizSession] = useState<{ subject: string; topic: string; date: Date; duration_minutes: number } | null>(null);
-
     const rebalanceForm = useForm({});
 
 
@@ -228,10 +222,10 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
     };
 
     const toggleSession = (date: Date, session: Session) => {
-        const completed = isCompleted(date, session.subject, session.topic);
+        const done = isCompleted(date, session.subject, session.topic);
 
-        if (completed) {
-            // Un-toggle: directly remove completion
+        if (done) {
+            // If already completed, uncomplete it
             form.setData({
                 subject: getSubjectDisplay(session),
                 topic: getTopicDisplay(session),
@@ -244,75 +238,12 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                 preserveScroll: true
             });
         } else {
-            // Open quiz modal before completing
-            setQuizSession({
-                subject: getSubjectDisplay(session),
-                topic: getTopicDisplay(session),
-                date,
-                duration_minutes: session.duration_minutes ?? 60,
-            });
-            setQuizOpen(true);
+            // Navigate to full quiz page
+            const subject = getSubjectDisplay(session);
+            const topic = getTopicDisplay(session);
+            router.visit(`/quiz/practice?subject=${encodeURIComponent(subject)}&topic=${encodeURIComponent(topic)}`);
         }
     };
-
-    // Track pending quiz completion
-    const [pendingQuizResultId, setPendingQuizResultId] = useState<number | null>(null);
-
-    const handleQuizPassed = useCallback((resultId: number) => {
-        if (!quizSession) return;
-        setQuizOpen(false);
-
-        form.setData({
-            subject: quizSession.subject,
-            topic: quizSession.topic,
-            duration_minutes: quizSession.duration_minutes,
-            started_at: format(quizSession.date, "yyyy-MM-dd HH:mm:ss"),
-            status: 'completed',
-            quiz_result_id: resultId,
-        });
-
-        setPendingQuizResultId(resultId);
-        setQuizSession(null);
-    }, [quizSession, form]);
-
-    // Handle failed quiz - option to complete anyway or retake
-    const handleQuizFailed = useCallback(() => {
-        if (!quizSession) return;
-
-        // Close quiz modal and show option to complete anyway
-        if (confirm('Quiz not passed. Would you like to mark this session complete anyway?')) {
-            setQuizOpen(false);
-
-            form.setData({
-                subject: quizSession.subject,
-                topic: quizSession.topic,
-                duration_minutes: quizSession.duration_minutes,
-                started_at: format(quizSession.date, "yyyy-MM-dd HH:mm:ss"),
-                status: 'completed',
-                quiz_result_id: null,
-            });
-
-            setPendingQuizResultId(-1); // Special marker for failed quiz
-            setQuizSession(null);
-        }
-    }, [quizSession, form]);
-
-    // Post form after quiz_result_id is set in form data
-    useEffect(() => {
-        if (pendingQuizResultId !== null && form.data.quiz_result_id === pendingQuizResultId) {
-            form.post(route('study-plan.toggle-session'), {
-                preserveScroll: true,
-            });
-            setPendingQuizResultId(null);
-        }
-        // Handle failed quiz case (marker is -1, quiz_result_id is null)
-        if (pendingQuizResultId === -1 && form.data.quiz_result_id === null && form.data.status === 'completed') {
-            form.post(route('study-plan.toggle-session'), {
-                preserveScroll: true,
-            });
-            setPendingQuizResultId(null);
-        }
-    }, [form.data.quiz_result_id, form.data.status, pendingQuizResultId]);
 
     // Calculate days until exam for a subject
     const getExamInfo = (subject: string): {
@@ -1147,7 +1078,7 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                             <CardHeader className="pb-3">
                                 <CardTitle className="text-sm font-bold flex items-center gap-2">
                                     <div className="p-1.5 bg-primary/10 rounded-lg border border-primary/20">
-                                        <Target className="w-4 h-4 text-primary" />
+                                        <Trophy className="w-4 h-4 text-primary" />
                                     </div>
                                     Your Goal
                                 </CardTitle>
@@ -1171,21 +1102,6 @@ export default function StudyPlanner({ plan, completedSessions, examDates, progr
                     </div>
                 </div>
             </div>
-
-            {/* Quiz Modal */}
-            {quizSession && (
-                <QuizModal
-                    key={`${quizSession.subject}-${quizSession.topic}`}
-                    open={quizOpen}
-                    onClose={() => {
-                        setQuizOpen(false);
-                    }}
-                    onPassed={handleQuizPassed}
-                    onFailed={handleQuizFailed}
-                    subject={quizSession.subject}
-                    topic={quizSession.topic}
-                />
-            )}
 
         </AppLayout>
     );
