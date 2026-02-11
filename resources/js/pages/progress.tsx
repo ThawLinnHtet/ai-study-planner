@@ -1,10 +1,13 @@
 import { Head } from '@inertiajs/react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
-import { Award, CheckCircle2, Flame, Sparkles, SpellCheck, Target, Timer, TrendingUp, XCircle } from 'lucide-react';
+import { Award, CheckCircle2, Flame, Sparkles, SpellCheck, Target, Timer, TrendingUp, XCircle, ChevronDown, ChevronUp, BookOpen, RotateCcw, Eye } from 'lucide-react';
+import { useState, useEffect } from 'react';
 import Heading from '@/components/heading';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import {
@@ -18,6 +21,18 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+
+// Add custom styles for animations
+const customStyles = `
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-down {
+    animation: slideDown 0.3s ease-out;
+}
+`;
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -77,6 +92,14 @@ type QuizHistoryItem = {
     skipped_count: number;
     total_questions: number;
     taken_at: string | null;
+    review?: Array<{
+        question: string;
+        user_answer: string;
+        correct_answer: string;
+        is_correct: boolean;
+        explanation?: string;
+        options?: (string | { label: string; text: string })[];
+    }>;
 };
 
 type SubjectBreakdown = {
@@ -156,8 +179,222 @@ function formatMinutes(minutes: number): string {
     return r === 0 ? `${h}h` : `${h}h ${r}m`;
 }
 
+// Helper function to extract option text
+function getOptionText(option: string | { label: string; text: string }): string {
+    if (typeof option === 'string') return option;
+    return option.text || option.label || '';
+}
+
+// Quiz Card Component
+function QuizCard({ quiz }: { quiz: QuizHistoryItem }) {
+    const [expanded, setExpanded] = useState(false);
+    const hasReview = quiz.review && quiz.review.length > 0;
+
+    return (
+        <Card className="border bg-card shadow-sm hover:shadow-md transition-all duration-200">
+            <CardContent className="p-4">
+                {/* Summary Row */}
+                <div className="flex items-center gap-3">
+                    <div className="shrink-0">
+                        {quiz.passed ? (
+                            <div className="bg-green-100 text-green-600 rounded-full p-2">
+                                <CheckCircle2 className="w-4 h-4" />
+                            </div>
+                        ) : (
+                            <div className="bg-red-100 text-red-600 rounded-full p-2">
+                                <XCircle className="w-4 h-4" />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-semibold truncate">
+                                {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''}
+                            </p>
+                            <Badge
+                                variant={quiz.passed ? 'default' : 'destructive'}
+                                className="shrink-0 text-xs"
+                            >
+                                {quiz.percentage}%
+                            </Badge>
+                        </div>
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                            <span>{quiz.correct_count}/{quiz.total_questions} correct</span>
+                            {quiz.taken_at && (
+                                <span>{formatDistanceToNow(parseISO(quiz.taken_at), { addSuffix: true })}</span>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setExpanded(!expanded)}
+                            className="h-8 w-8 p-0"
+                        >
+                            {expanded ? (
+                                <ChevronUp className="w-4 h-4" />
+                            ) : (
+                                <ChevronDown className="w-4 h-4" />
+                            )}
+                        </Button>
+                    </div>
+                </div>
+
+                {/* Expanded Details */}
+                {expanded && (
+                    <div className="mt-4 pt-4 border-t space-y-4 animate-slide-down">
+                        {/* Quick Stats */}
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                                <p className="text-lg font-bold text-green-700">{quiz.correct_count}</p>
+                                <p className="text-xs text-green-600">Correct</p>
+                            </div>
+                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                                <p className="text-lg font-bold text-red-700">{quiz.incorrect_count}</p>
+                                <p className="text-xs text-red-600">Incorrect</p>
+                            </div>
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                                <p className="text-lg font-bold text-gray-700">{quiz.skipped_count || 0}</p>
+                                <p className="text-xs text-gray-600">Skipped</p>
+                            </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex gap-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 text-xs"
+                                disabled={!hasReview}
+                                onClick={() => {
+                                    // Navigate to detailed review (if available)
+                                    if (hasReview) {
+                                        // TODO: Create this route in backend
+                                        console.log('Navigate to review:', quiz.id);
+                                        alert('Detailed review feature coming soon!');
+                                    }
+                                }}
+                            >
+                                <Eye className="w-3 h-3 mr-1" />
+                                {hasReview ? 'Full Review' : 'Review N/A'}
+                            </Button>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 text-xs"
+                                onClick={() => {
+                                    // Navigate back to study planner to retake quiz
+                                    window.location.href = '/study-planner';
+                                }}
+                            >
+                                <RotateCcw className="w-3 h-3 mr-1" />
+                                Back to Study
+                            </Button>
+                        </div>
+
+                        {/* Question Preview (only if review data available) */}
+                        {hasReview && (
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Question Preview</p>
+                                <div className="space-y-2 max-h-40 overflow-y-auto">
+                                    {quiz.review?.slice(0, 3).map((item, index) => (
+                                        <div
+                                            key={index}
+                                            className={cn(
+                                                "p-2 rounded-lg border text-xs",
+                                                item.is_correct
+                                                    ? "bg-green-50 border-green-200"
+                                                    : "bg-red-50 border-red-200"
+                                            )}
+                                        >
+                                            <div className="flex items-start gap-2">
+                                                <span className="shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
+                                                    {index + 1}
+                                                </span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-medium truncate">{item.question}</p>
+                                                    <div className="mt-1 flex items-center gap-2">
+                                                        <span className="text-muted-foreground">Your: {item.user_answer}</span>
+                                                        {!item.is_correct && (
+                                                            <>
+                                                                <span className="text-muted-foreground">→</span>
+                                                                <span className="text-green-600">Correct: {item.correct_answer}</span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                {item.is_correct ? (
+                                                    <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
+                                                ) : (
+                                                    <XCircle className="w-3 h-3 text-red-600 shrink-0" />
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {quiz.review && quiz.review.length > 3 && (
+                                        <p className="text-xs text-muted-foreground text-center py-2">
+                                            ... and {quiz.review.length - 3} more questions
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Performance Message */}
+                        <div className={cn(
+                            "p-3 rounded-lg text-xs",
+                            quiz.passed
+                                ? "bg-green-50 border border-green-200 text-green-700"
+                                : "bg-orange-50 border border-orange-200 text-orange-700"
+                        )}>
+                            {quiz.passed ? (
+                                <div className="flex items-center gap-2">
+                                    <CheckCircle2 className="w-3 h-3" />
+                                    <span className="font-medium">Excellent work! You've mastered this topic.</span>
+                                </div>
+                            ) : (
+                                <div className="flex items-center gap-2">
+                                    <Target className="w-3 h-3" />
+                                    <span className="font-medium">Keep practicing! Review the incorrect answers to improve.</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* No Review Data Message */}
+                        {!hasReview && (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
+                                <div className="flex items-center gap-2">
+                                    <Eye className="w-3 h-3" />
+                                    <div>
+                                        <span className="font-medium">Detailed review data not available</span>
+                                        <p className="text-blue-600 mt-1">Future quizzes will save detailed answers for review.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </CardContent>
+        </Card>
+    );
+}
+
 export default function ProgressPage({ progress: stats, quizHistory, quizStats, quizTrends }: Props) {
     const xpToNext = Math.max(0, stats.xp.next_level_at - stats.xp.total);
+
+    // Inject custom styles
+    useEffect(() => {
+        const styleElement = document.createElement('style');
+        styleElement.textContent = customStyles;
+        document.head.appendChild(styleElement);
+
+        return () => {
+            document.head.removeChild(styleElement);
+        };
+    }, []);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -671,14 +908,14 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                             </CardContent>
                         </Card>
 
-                        {/* Recent Quiz History */}
+                        {/* Enhanced Recent Quiz History */}
                         <Card className="lg:col-span-2">
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2">
                                     <SpellCheck className="w-5 h-5 text-primary" />
                                     Recent Quizzes
                                 </CardTitle>
-                                <CardDescription>Your latest quiz attempts</CardDescription>
+                                <CardDescription>Your latest quiz attempts with detailed review options</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 {quizHistory.length === 0 ? (
@@ -686,39 +923,9 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                         No quizzes taken yet. Go to the Study Planner and click "Take Quiz" on any session to get started!
                                     </p>
                                 ) : (
-                                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                                    <div className="space-y-3 max-h-[500px] overflow-y-auto">
                                         {quizHistory.map((quiz) => (
-                                            <div
-                                                key={quiz.id}
-                                                className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20 hover:bg-muted/40 transition-colors"
-                                            >
-                                                <div className="shrink-0">
-                                                    {quiz.passed ? (
-                                                        <CheckCircle2 className="w-5 h-5 text-green-500" />
-                                                    ) : (
-                                                        <XCircle className="w-5 h-5 text-red-500" />
-                                                    )}
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="flex items-center gap-2">
-                                                        <p className="text-sm font-medium truncate">
-                                                            {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''}
-                                                        </p>
-                                                    </div>
-                                                    <p className="text-xs text-muted-foreground">
-                                                        {quiz.correct_count}/{quiz.total_questions} correct
-                                                        {quiz.taken_at && (
-                                                            <> &middot; {formatDistanceToNow(parseISO(quiz.taken_at), { addSuffix: true })}</>
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                <Badge
-                                                    variant={quiz.passed ? 'default' : 'destructive'}
-                                                    className="shrink-0"
-                                                >
-                                                    {quiz.percentage}%
-                                                </Badge>
-                                            </div>
+                                            <QuizCard key={quiz.id} quiz={quiz} />
                                         ))}
                                     </div>
                                 )}
