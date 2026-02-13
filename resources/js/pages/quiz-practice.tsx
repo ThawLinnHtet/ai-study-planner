@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { useState, useEffect } from 'react';
-import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, RotateCcw, XCircle, Sparkles, Target, Timer, Lock, Clock } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, RotateCcw, XCircle, Sparkles, Target, Timer, Lock, Clock, Heart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
@@ -87,6 +87,10 @@ interface Props {
     topic?: string;
 }
 
+const CHEAT_SCORE_ALERT_THRESHOLD = 5;
+const FAST_ANSWER_THRESHOLD = 3000; // 3 seconds
+const MAX_CHEAT_SCORE = 10;
+
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Study Planner', href: '/study-planner' },
     { title: 'Quiz Practice', href: '#' },
@@ -113,10 +117,17 @@ export default function QuizPracticePage({ subject, topic }: Props) {
     const [result, setResult] = useState<QuizResult | null>(null);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
 
-    // Phase 1: Attempt Tracking
-    const MAX_ATTEMPTS = 3;
-    const [attempts, setAttempts] = useState(0);
-    const [attemptHistory, setAttemptHistory] = useState<Array<{ percentage: number; timestamp: number }>>([]);
+    // Lives System (Duolingo-style)
+    const MAX_LIVES = 3;
+    const LIFE_REFILL_MINUTES = 30; // 1 life refills every 30 minutes
+    type LivesData = {
+        lives: number;
+        lastLostAt: number | null; // timestamp when last life was lost
+    };
+
+    const [lives, setLives] = useState(MAX_LIVES);
+    const [nextRefillIn, setNextRefillIn] = useState<string | null>(null);
+    const [livesReady, setLivesReady] = useState(false);
 
     // Question Timer Enhancement - Now Total Quiz Timer
     const [timeRemaining, setTimeRemaining] = useState(600); // 10 minutes total (600 seconds)
@@ -134,26 +145,122 @@ export default function QuizPracticePage({ subject, topic }: Props) {
     }>>([]);
     const [answerTimes, setAnswerTimes] = useState<number[]>([]);
     const [mouseMovements, setMouseMovements] = useState<Array<{ x: number; y: number; timestamp: number }>>([]);
+    const [cheatScore, setCheatScore] = useState(0);
+    const [cheatWarnings, setCheatWarnings] = useState(0);
+    const [violationLog, setViolationLog] = useState<Array<{ reason: string; points: number; timestamp: number }>>([]);
+    const alertLockRef = useRef(false);
 
-    // Load attempt history from localStorage
-    useEffect(() => {
-        const attemptKey = `quiz_attempts_${subject}_${topic}`;
-        const savedAttempts = localStorage.getItem(attemptKey);
-        if (savedAttempts) {
-            const history = JSON.parse(savedAttempts);
-            setAttemptHistory(history);
-            setAttempts(history.length);
+    const registerViolation = (reason: string, points: number) => {
+        if (alertLockRef.current) return;
+        setCheatScore(prev => Math.min(prev + points, MAX_CHEAT_SCORE));
+        setViolationLog(prev => [...prev.slice(-9), { reason, points, timestamp: Date.now() }]);
+    };
 
-            // Phase 2: Check if cooldown has expired
-            if (history.length >= MAX_ATTEMPTS) {
-                const lastAttempt = history[history.length - 1];
-                const hoursSinceLastAttempt = (Date.now() - lastAttempt.timestamp) / (1000 * 60 * 60);
-                if (hoursSinceLastAttempt >= 24) {
-                    resetAttemptsAfterCooldown();
-                }
-            }
+    const resetCheatMonitoring = () => {
+        alertLockRef.current = false;
+        setCheatScore(0);
+        setViolationLog([]);
+    };
+
+    // Learning-Focused Response System
+    const [learningAlert, setLearningAlert] = useState<{
+        level: 'none' | 'unfocused' | 'distracted' | 'struggling';
+        message: string;
+        action: string;
+        show: boolean;
+    }>({
+        level: 'none',
+        message: '',
+        action: '',
+        show: false
+    });
+
+    // Pattern Tracking for Better UX
+    const [learningPatterns, setLearningPatterns] = useState<{
+        sessionStartTime: number;
+        questionsAttempted: number;
+        averageAnswerTime: number;
+        difficultyStruggles: Set<number>;
+        focusTrends: number[]; // Track focus over time
+        learningVelocity: number; // How fast user is learning
+        engagementScore: number; // Overall engagement level
+    }>({
+        sessionStartTime: 0,
+        questionsAttempted: 0,
+        averageAnswerTime: 0,
+        difficultyStruggles: new Set<number>(),
+        focusTrends: [], // Track focus over time
+        learningVelocity: 0, // How fast user is learning
+        engagementScore: 0 // Overall engagement level
+    });
+
+    // Load lives from localStorage and calculate refills
+    const livesKey = `quiz_lives_${subject}_${topic}`;
+
+    const loadLives = (): LivesData => {
+        const saved = localStorage.getItem(livesKey);
+        if (!saved) return { lives: MAX_LIVES, lastLostAt: null };
+        try {
+            return JSON.parse(saved);
+        } catch {
+            return { lives: MAX_LIVES, lastLostAt: null };
         }
+    };
+
+    const saveLives = (data: LivesData) => {
+        localStorage.setItem(livesKey, JSON.stringify(data));
+    };
+
+    const calculateRefills = (data: LivesData): LivesData => {
+        if (data.lives >= MAX_LIVES || !data.lastLostAt) return data;
+        const now = Date.now();
+        const elapsed = now - data.lastLostAt;
+        const refillsEarned = Math.floor(elapsed / (LIFE_REFILL_MINUTES * 60000));
+        if (refillsEarned > 0) {
+            const newLives = Math.min(data.lives + refillsEarned, MAX_LIVES);
+            const newLastLostAt = newLives >= MAX_LIVES ? null : data.lastLostAt + refillsEarned * LIFE_REFILL_MINUTES * 60000;
+            return { lives: newLives, lastLostAt: newLastLostAt };
+        }
+        return data;
+    };
+
+    useEffect(() => {
+        setLivesReady(false);
+        const data = calculateRefills(loadLives());
+        setLives(data.lives);
+        saveLives(data);
+        setLivesReady(true);
     }, [subject, topic]);
+
+    // Refill timer - update countdown every second
+    useEffect(() => {
+        if (lives >= MAX_LIVES) {
+            setNextRefillIn(null);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const data = loadLives();
+            const updated = calculateRefills(data);
+            if (updated.lives !== lives) {
+                setLives(updated.lives);
+                saveLives(updated);
+            }
+
+            // Calculate time until next refill
+            if (updated.lastLostAt && updated.lives < MAX_LIVES) {
+                const elapsed = Date.now() - updated.lastLostAt;
+                const nextRefillMs = LIFE_REFILL_MINUTES * 60000 - (elapsed % (LIFE_REFILL_MINUTES * 60000));
+                const mins = Math.floor(nextRefillMs / 60000);
+                const secs = Math.floor((nextRefillMs % 60000) / 1000);
+                setNextRefillIn(`${mins}:${secs.toString().padStart(2, '0')}`);
+            } else {
+                setNextRefillIn(null);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [lives, subject, topic]);
 
     // Question Timer Enhancement: Total Quiz Timer Management
     useEffect(() => {
@@ -183,27 +290,33 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         }
     }, [phase]);
 
-    // Anti-Cheat Detection: Tab Switching
+    // Anti-Cheat Detection: Tab Switching (covers mouse tab clicks + Alt+Tab)
     useEffect(() => {
-        const handleVisibilityChange = () => {
-            if (document.hidden && phase === 'quiz') {
-                setTabSwitches(prev => prev + 1);
-                setSuspiciousActivity(prev => [...prev, {
-                    type: 'tab_switch',
-                    timestamp: Date.now(),
-                    question: currentQuestion
-                }]);
+        if (phase !== 'quiz') return;
 
-                // Warn user after multiple switches
-                if (tabSwitches >= 2) {
-                    alert('⚠️ Warning: Multiple tab switches detected! This may affect your score validity.');
-                }
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                setTabSwitches(prev => prev + 1);
+                registerViolation('tab_switch', 1);
             }
         };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-    }, [phase, currentQuestion, tabSwitches]);
+        document.addEventListener('visibilitychange', handleVisibilityChange, true);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange, true);
+    }, [phase]);
+
+    // Blur event detection
+    useEffect(() => {
+        if (phase !== 'quiz') return;
+
+        const handleBlur = () => {
+            console.log('👀 Blur event detected');
+            registerViolation('blur_event', 1);
+        };
+
+        window.addEventListener('blur', handleBlur);
+        return () => window.removeEventListener('blur', handleBlur);
+    }, [phase]);
 
     // Anti-Cheat Detection: Copy/Paste Prevention
     useEffect(() => {
@@ -217,6 +330,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                 timestamp: Date.now()
             }]);
             alert('🚫 Copy is not allowed during quiz!');
+            registerViolation('copy_attempt', 2);
         };
 
         const handlePaste = (e: ClipboardEvent) => {
@@ -227,6 +341,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                 timestamp: Date.now()
             }]);
             alert('🚫 Paste is not allowed during quiz!');
+            registerViolation('paste_attempt', 2);
         };
 
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -239,6 +354,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                     question: currentQuestion,
                     timestamp: Date.now()
                 }]);
+                registerViolation('shortcut_attempt', 2);
             }
         };
 
@@ -307,99 +423,21 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         return option.label || String(option);
     };
 
-    // Phase 1: Attempt Management Functions
-    const saveAttempt = (percentage: number) => {
-        const attemptKey = `quiz_attempts_${subject}_${topic}`;
-        const newAttempt = { percentage, timestamp: Date.now() };
-        const updatedHistory = [...attemptHistory, newAttempt];
+    // Lives system helpers
+    const canAttemptQuiz = () => lives > 0;
 
-        setAttemptHistory(updatedHistory);
-        setAttempts(updatedHistory.length);
-        localStorage.setItem(attemptKey, JSON.stringify(updatedHistory));
-    };
-
-    const canAttemptQuiz = () => {
-        // Phase 2: Check both attempt limit and cooldown
-        if (attempts >= MAX_ATTEMPTS) {
-            // Check if 24 hours have passed since last attempt
-            if (attemptHistory.length > 0) {
-                const lastAttempt = attemptHistory[attemptHistory.length - 1];
-                const hoursSinceLastAttempt = (Date.now() - lastAttempt.timestamp) / (1000 * 60 * 60);
-                if (hoursSinceLastAttempt >= 24) {
-                    // Phase 2: Auto-reset attempts after 24-hour cooldown
-                    resetAttemptsAfterCooldown();
-                    return true; // Cooldown expired, allow retry
-                }
-            }
-            return false; // Still in cooldown or max attempts
-        }
-        return true; // Attempts available
-    };
-
-    const getCooldownStatus = () => {
-        if (attempts < MAX_ATTEMPTS) return null;
-
-        if (attemptHistory.length > 0) {
-            const lastAttempt = attemptHistory[attemptHistory.length - 1];
-            const hoursSinceLastAttempt = (Date.now() - lastAttempt.timestamp) / (1000 * 60 * 60);
-            const hoursRemaining = Math.max(0, 24 - hoursSinceLastAttempt);
-
-            if (hoursRemaining > 0) {
-                return {
-                    inCooldown: true,
-                    hoursRemaining: Math.ceil(hoursRemaining),
-                    canRetry: false
-                };
-            }
-        }
-
-        return { inCooldown: false, canRetry: true };
-    };
-
-    // Phase 2: Auto-reset attempts after cooldown
-    const resetAttemptsAfterCooldown = () => {
-        const attemptKey = `quiz_attempts_${subject}_${topic}`;
-        localStorage.removeItem(attemptKey);
-        setAttemptHistory([]);
-        setAttempts(0);
-        console.log('✅ Attempts reset after 24-hour cooldown');
-    };
-
-    // Phase 2: Debug function to test cooldown (remove in production)
-    const testCooldown = () => {
-        console.log('🧪 Testing 24-hour cooldown...');
-        console.log('Current attempts:', attempts);
-        console.log('Attempt history:', attemptHistory);
-
-        if (attemptHistory.length > 0) {
-            const lastAttempt = attemptHistory[attemptHistory.length - 1];
-            const hoursSinceLastAttempt = (Date.now() - lastAttempt.timestamp) / (1000 * 60 * 60);
-            console.log('Hours since last attempt:', hoursSinceLastAttempt);
-            console.log('Can attempt quiz:', canAttemptQuiz());
-
-            const cooldownStatus = getCooldownStatus();
-            console.log('Cooldown status:', cooldownStatus);
-        }
-    };
-
-    const getAttemptStatus = () => {
-        const cooldownStatus = getCooldownStatus();
-
-        if (cooldownStatus?.inCooldown) {
-            return {
-                canAttempt: false,
-                message: `Cooldown: ${cooldownStatus.hoursRemaining} hours remaining`
-            };
-        }
-
-        if (attempts === 0) return { canAttempt: true, message: 'First attempt - good luck!' };
-        if (attempts < MAX_ATTEMPTS) return { canAttempt: true, message: `Attempt ${attempts + 1} of ${MAX_ATTEMPTS}` };
-        return { canAttempt: false, message: 'Maximum attempts reached' };
+    const loseLife = () => {
+        const data = calculateRefills(loadLives());
+        const newLives = Math.max(0, data.lives - 1);
+        const updated: LivesData = { lives: newLives, lastLostAt: Date.now() };
+        saveLives(updated);
+        setLives(newLives);
     };
 
     useEffect(() => {
+        if (!livesReady) return;
         generateQuiz();
-    }, [subject, topic]);
+    }, [subject, topic, livesReady]);
 
     const generateQuiz = async (forceNew = false) => {
         // Phase 1: Check attempt limit before generating quiz
@@ -422,8 +460,11 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                 requests.push(
                     fetch('/quiz/generate', {
                         method: 'POST',
+                        credentials: 'same-origin',
                         headers: {
                             'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': token || '',
                         },
                         body: JSON.stringify({ subject, topic, forceNew: forceNew || i > 0 }),
@@ -554,14 +595,14 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         const answerTime = Date.now() - quizStartTime;
         setAnswerTimes(prev => [...prev, answerTime]);
 
-        // Flag suspiciously fast answers (< 10 seconds total)
-        if (answerTime < 10000 && currentQuestion > 0) {
+        if (answerTime < FAST_ANSWER_THRESHOLD) {
             setSuspiciousActivity(prev => [...prev, {
                 type: 'fast_answer',
                 time: answerTime,
                 question: currentQuestion,
                 timestamp: Date.now()
             }]);
+            registerViolation('fast_answer', 2);
         }
 
         setSelectedOption(optionText);
@@ -607,41 +648,140 @@ export default function QuizPracticePage({ subject, topic }: Props) {
 
     // Anti-Cheat Detection: Analysis Function
     const analyzeCheatPatterns = () => {
-        const patterns = {
-            // Tab switching analysis
-            tabSwitches: tabSwitches,
-            tabSwitchThreshold: tabSwitches > 2,
+        const riskScore = Math.min((cheatScore / CHEAT_SCORE_ALERT_THRESHOLD) * 100, 100);
 
-            // Answer timing analysis
-            fastAnswers: answerTimes.filter(time => time < 3000).length,
-            slowAnswers: answerTimes.filter(time => time > 28000).length,
-            averageTime: answerTimes.length > 0 ? answerTimes.reduce((a, b) => a + b, 0) / answerTimes.length : 0,
-            consistentTiming: answerTimes.length > 1 ?
-                Math.max(...answerTimes) - Math.min(...answerTimes) < 3000 : false,
-
-            // Mouse movement analysis
-            lowMouseActivity: mouseMovements.length < 50,
-
-            // Suspicious activity count
+        return {
+            tabSwitches,
             suspiciousCount: suspiciousActivity.length,
+            cheatScore,
+            violationLog,
+            riskScore
+        };
+    };
 
-            // Risk score (0-100)
-            riskScore: 0
+    // Learning-Focused Pattern Analysis
+    const analyzeLearningPatterns = () => {
+        const patterns = analyzeCheatPatterns();
+        const { cheatScore, violationLog } = patterns;
+
+        console.log('🧮 Cheat score check:', {
+            cheatScore,
+            violationLog
+        });
+
+        if (cheatScore < CHEAT_SCORE_ALERT_THRESHOLD) {
+            return {
+                level: 'none' as const,
+                message: '',
+                action: 'continue'
+            };
+        }
+
+        const latestViolation = violationLog[violationLog.length - 1];
+        const reasonMessages: Record<string, string> = {
+            tab_switch: 'Switching tabs mid-quiz breaks your focus and hurts retention. Stay in this window until the section is complete.',
+            blur_event: 'You minimized or left the quiz window. Keep the quiz in focus so your brain stays in learning mode.',
+            fast_answer: 'Answers submitted in under 3 seconds usually mean guessing or copying. Slow down and reason through each step.',
+            copy_attempt: 'Copying quiz content prevents real learning. Engage with the question and explain it in your own words.',
+            paste_attempt: 'Pasting answers bypasses the practice. Try solving it yourself first, then review explanations.',
+            shortcut_attempt: 'Keyboard shortcuts like Ctrl+C/Ctrl+V are disabled during quizzes. Use the review mode afterward for notes.'
         };
 
-        // Calculate risk score
-        let risk = 0;
-        if (patterns.tabSwitchThreshold) risk += 30;
-        if (patterns.fastAnswers > 3) risk += 25;
-        if (patterns.slowAnswers > 2) risk += 20;
-        if (patterns.consistentTiming) risk += 15;
-        if (patterns.lowMouseActivity) risk += 10;
-        risk += Math.min(patterns.suspiciousCount * 5, 50);
+        const defaultMessage = 'We noticed repeated behaviors that prevent productive study. Let\'s reset and come back with full focus.';
+        const message = latestViolation ? reasonMessages[latestViolation.reason] || defaultMessage : defaultMessage;
 
-        patterns.riskScore = Math.min(risk, 100);
+        if (cheatWarnings === 0) {
+            return {
+                level: 'unfocused' as const,
+                message: `${message} This is your only warning—stay focused and keep the quiz in view.`,
+                action: 'gentle_nudge'
+            };
+        }
 
-        return patterns;
+        return {
+            level: 'distracted' as const,
+            message: 'We already warned you about losing focus. To protect your learning time, we need to restart this section now.',
+            action: 'restart_section'
+        };
     };
+
+    // Learning Response Handler
+    const handleLearningResponse = (action: string) => {
+        resetCheatMonitoring();
+
+        switch (action) {
+            case 'gentle_nudge':
+                // Show gentle reminder and continue
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                setCheatWarnings(1);
+                break;
+            case 'restart_section':
+                // Reset current quiz section
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                setCheatWarnings(prev => Math.min(prev + 1, 2));
+                setCurrentQuestion(0);
+                setAnswers(new Array(quiz!.total_questions).fill(null));
+                setSelectedOption(null);
+                setTimeRemaining(TOTAL_QUIZ_TIME);
+                break;
+            case 'adapt_content':
+                // Navigate to easier content or review
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                // You could redirect to review material here
+                router.visit('/study-planner');
+                break;
+            case 'continue_anyway':
+                // Allow to continue with understanding
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                break;
+                // Show gentle reminder and continue
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                break;
+            case 'restart_section':
+                // Reset current quiz section
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                setCurrentQuestion(0);
+                setAnswers(new Array(quiz!.total_questions).fill(null));
+                setSelectedOption(null);
+                setTimeRemaining(TOTAL_QUIZ_TIME);
+                break;
+            case 'adapt_content':
+                // Navigate to easier content or review
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                // You could redirect to review material here
+                router.visit('/study-planner');
+                break;
+            case 'continue_anyway':
+                // Allow to continue with understanding
+                setLearningAlert(prev => ({ ...prev, show: false }));
+                break;
+        }
+    };
+
+    // Check Learning Patterns Continuously
+    useEffect(() => {
+        if (phase !== 'quiz' || learningAlert.show || cheatScore === 0) return;
+
+        console.log('🔍 Checking learning patterns...', {
+            cheatScore,
+            violationLog,
+            currentAlert: learningAlert.level
+        });
+
+        const learningPattern = analyzeLearningPatterns();
+        console.log('📊 Learning pattern analysis:', learningPattern);
+
+        if (learningPattern.level !== 'none') {
+            console.log('🚨 Showing learning alert:', learningPattern);
+            alertLockRef.current = true;
+            setLearningAlert({
+                level: learningPattern.level,
+                message: learningPattern.message,
+                action: learningPattern.action,
+                show: true
+            });
+        }
+    }, [cheatScore, violationLog, phase, learningAlert.show]);
 
     const submitQuiz = async () => {
         if (!quiz) return;
@@ -718,8 +858,11 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             const resultData = await response.json();
             setResult(resultData);
 
-            // Phase 1: Save this attempt
-            saveAttempt(resultData.percentage);
+            // Lives system: lose a life if quiz failed
+            const passed = resultData.percentage >= (quiz?.pass_percentage ?? 70);
+            if (!passed) {
+                loseLife();
+            }
 
             setPhase('result');
         } catch (error) {
@@ -773,71 +916,58 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         );
     }
 
-    // Phase 1: Attempt Limit Reached Screen
+    // No Lives Screen
     if (phase === 'attempt_limit_reached') {
-        const cooldownStatus = getCooldownStatus();
-        const isInCooldown = cooldownStatus?.inCooldown;
-
         return (
             <AppLayout breadcrumbs={breadcrumbs}>
-                <Head title="Quiz Attempts Limit Reached" />
+                <Head title="No Lives Remaining" />
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
                     <Card className="w-full max-w-md shadow-xl animate-scaleIn">
                         <CardContent className="p-8 text-center">
-                            <div className={cn(
-                                "rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4",
-                                isInCooldown
-                                    ? "bg-orange-100 text-orange-600"
-                                    : "bg-red-100 text-red-600"
-                            )}>
-                                {isInCooldown ? (
-                                    <Clock className="w-8 h-8" />
-                                ) : (
-                                    <Lock className="w-8 h-8" />
-                                )}
+                            {/* Hearts Display */}
+                            <div className="flex justify-center gap-2 mb-4">
+                                {[...Array(MAX_LIVES)].map((_, i) => (
+                                    <Heart
+                                        key={i}
+                                        className={cn(
+                                            "w-10 h-10 transition-all duration-300",
+                                            i < lives
+                                                ? "text-red-500 fill-red-500"
+                                                : "text-gray-300"
+                                        )}
+                                    />
+                                ))}
                             </div>
+
                             <h2 className="text-2xl font-bold text-gray-900 mb-2">
-                                {isInCooldown ? 'Cooldown Period' : 'Maximum Attempts Reached'}
+                                No Lives Remaining
                             </h2>
-                            <p className="text-gray-600 mb-6">
-                                {isInCooldown
-                                    ? `Wait ${cooldownStatus.hoursRemaining} hours before trying again.`
-                                    : `You've used all ${MAX_ATTEMPTS} attempts for this quiz.`
-                                }
+                            <p className="text-gray-600 mb-4">
+                                You've lost all your lives for this quiz. Lives refill automatically over time.
                             </p>
 
-                            {/* Attempt History */}
-                            <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                                <h3 className="text-sm font-semibold text-gray-700 mb-3">Your Attempts:</h3>
-                                <div className="space-y-2">
-                                    {attemptHistory.map((attempt, index) => (
-                                        <div key={index} className="flex justify-between items-center text-sm">
-                                            <span className="text-gray-600">Attempt {index + 1}</span>
-                                            <span className={cn(
-                                                "font-medium",
-                                                attempt.percentage >= 70 ? "text-green-600" :
-                                                    attempt.percentage >= 50 ? "text-yellow-600" : "text-red-600"
-                                            )}>
-                                                {attempt.percentage}%
-                                            </span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-
-                            {/* Phase 2: Study Recommendations */}
-                            {!isInCooldown && (
-                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-                                    <h3 className="text-sm font-semibold text-blue-700 mb-2">Study Recommendations:</h3>
-                                    <ul className="text-xs text-blue-600 space-y-1 text-left">
-                                        <li>• Review the material thoroughly</li>
-                                        <li>• Focus on weak areas identified in previous attempts</li>
-                                        <li>• Try again after 24 hours for better retention</li>
-                                    </ul>
+                            {/* Refill Timer */}
+                            {nextRefillIn && (
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                                    <div className="flex items-center justify-center gap-2 text-orange-700">
+                                        <Clock className="w-5 h-5" />
+                                        <span className="font-semibold text-lg">{nextRefillIn}</span>
+                                    </div>
+                                    <p className="text-xs text-orange-600 mt-1">until next life refills</p>
                                 </div>
                             )}
 
-                            {/* Phase 2: Action Buttons */}
+                            {/* Study Recommendations */}
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                                <h3 className="text-sm font-semibold text-blue-700 mb-2">While you wait:</h3>
+                                <ul className="text-xs text-blue-600 space-y-1 text-left">
+                                    <li>• Review the material thoroughly</li>
+                                    <li>• Focus on weak areas from previous attempts</li>
+                                    <li>• Practice with a different topic</li>
+                                </ul>
+                            </div>
+
+                            {/* Action Buttons */}
                             <div className="space-y-3">
                                 <Button
                                     variant="outline"
@@ -847,11 +977,9 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                     <BookOpen className="w-4 h-4 mr-2" />
                                     Back to Study
                                 </Button>
-                                {isInCooldown && (
-                                    <p className="text-xs text-gray-500 text-center">
-                                        Cooldown expires in {cooldownStatus.hoursRemaining} hours
-                                    </p>
-                                )}
+                                <p className="text-xs text-gray-500 text-center">
+                                    1 life refills every {LIFE_REFILL_MINUTES} minutes
+                                </p>
                             </div>
                         </CardContent>
                     </Card>
@@ -867,6 +995,63 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             <AppLayout breadcrumbs={breadcrumbs}>
                 <Head title={`Quiz: ${subject} - ${topic}`} />
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+                    {/* Learning Alert Modal */}
+                    {learningAlert.show && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 animate-fadeIn">
+                            <Card className="w-full max-w-md mx-4 shadow-2xl animate-scaleIn">
+                                <CardContent className="p-6 text-center">
+                                    {/* Alert Icon */}
+                                    <div className={cn(
+                                        "rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4",
+                                        learningAlert.level === 'struggling' ? "bg-purple-100 text-purple-600" :
+                                            learningAlert.level === 'distracted' ? "bg-orange-100 text-orange-600" :
+                                                learningAlert.level === 'unfocused' ? "bg-blue-100 text-blue-600" :
+                                                    "bg-gray-100 text-gray-600"
+                                    )}>
+                                        {learningAlert.level === 'struggling' ? (
+                                            <Target className="w-8 h-8" />
+                                        ) : learningAlert.level === 'distracted' ? (
+                                            <RotateCcw className="w-8 h-8" />
+                                        ) : learningAlert.level === 'unfocused' ? (
+                                            <Sparkles className="w-8 h-8" />
+                                        ) : (
+                                            <CheckCircle2 className="w-8 h-8" />
+                                        )}
+                                    </div>
+
+                                    {/* Alert Message */}
+                                    <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                                        {learningAlert.action === 'gentle_nudge' ? 'Stay Focused on This Quiz' : 'Section Restart Required'}
+                                    </h3>
+                                    <p className="text-gray-600 mb-6 leading-relaxed">
+                                        {learningAlert.message}
+                                    </p>
+
+                                    {/* Action Buttons */}
+                                    <div className="space-y-3">
+                                        {learningAlert.action === 'gentle_nudge' && (
+                                            <Button
+                                                onClick={() => handleLearningResponse('gentle_nudge')}
+                                                className="w-full"
+                                            >
+                                                I Understand, I'll Refocus
+                                            </Button>
+                                        )}
+
+                                        {learningAlert.action === 'restart_section' && (
+                                            <Button
+                                                onClick={() => handleLearningResponse('restart_section')}
+                                                className="w-full"
+                                            >
+                                                Restart Section Now
+                                            </Button>
+                                        )}
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+
                     {/* Header */}
                     <div className="bg-white shadow-sm border-b animate-slideIn">
                         <div className="max-w-4xl mx-auto px-4 py-4">
@@ -887,36 +1072,21 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    {/* Anti-Cheat Monitoring Indicator */}
-                                    <div className="flex items-center gap-2 text-xs text-gray-500 animate-pulse">
-                                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></div>
-                                        <span>Monitoring Active</span>
-                                    </div>
-
-                                    {/* Phase 1 & 2: Attempt Indicator */}
-                                    <div className="flex items-center gap-2 text-sm text-gray-600 animate-scaleIn" style={{ animationDelay: '400ms' }}>
-                                        <span className="text-xs">Attempts:</span>
-                                        <div className="flex gap-1">
-                                            {[...Array(MAX_ATTEMPTS)].map((_, i) => (
-                                                <div
-                                                    key={i}
-                                                    className={cn(
-                                                        "w-2 h-2 rounded-full transition-colors duration-200",
-                                                        i < attempts ? "bg-red-500" : "bg-gray-300"
-                                                    )}
-                                                />
-                                            ))}
-                                        </div>
-                                        <span className="text-xs font-medium">{attempts}/{MAX_ATTEMPTS}</span>
-
-                                        {/* Phase 2: Cooldown Indicator */}
-                                        {getCooldownStatus()?.inCooldown && (
-                                            <div className="flex items-center gap-1 text-orange-600">
-                                                <Clock className="w-3 h-3" />
-                                                <span className="text-xs font-medium">
-                                                    {getCooldownStatus()?.hoursRemaining}h
-                                                </span>
-                                            </div>
+                                    {/* Lives (Hearts) Indicator */}
+                                    <div className="flex items-center gap-1 animate-scaleIn" style={{ animationDelay: '400ms' }}>
+                                        {[...Array(MAX_LIVES)].map((_, i) => (
+                                            <Heart
+                                                key={i}
+                                                className={cn(
+                                                    "w-5 h-5 transition-all duration-300",
+                                                    i < lives
+                                                        ? "text-red-500 fill-red-500"
+                                                        : "text-gray-300"
+                                                )}
+                                            />
+                                        ))}
+                                        {nextRefillIn && lives < MAX_LIVES && (
+                                            <span className="text-xs text-orange-600 font-medium ml-1">{nextRefillIn}</span>
                                         )}
                                     </div>
                                     <div className="flex items-center gap-2 text-sm animate-scaleIn" style={{ animationDelay: '500ms' }}>
