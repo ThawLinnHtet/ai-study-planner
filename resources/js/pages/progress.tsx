@@ -1,15 +1,8 @@
 import { Head } from '@inertiajs/react';
 import { format, parseISO, formatDistanceToNow } from 'date-fns';
 import { Award, CheckCircle2, Flame, Sparkles, SpellCheck, Target, Timer, TrendingUp, XCircle, ChevronDown, ChevronUp, BookOpen, RotateCcw, Eye } from 'lucide-react';
+import { StreakIcon, getStreakMessage, getStreakColor } from '@/components/streak-icon';
 import { useState, useEffect } from 'react';
-import Heading from '@/components/heading';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
-import AppLayout from '@/layouts/app-layout';
-import type { BreadcrumbItem } from '@/types';
 import {
     Area,
     AreaChart,
@@ -21,6 +14,151 @@ import {
     XAxis,
     YAxis,
 } from 'recharts';
+import Heading from '@/components/heading';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
+import type { BreadcrumbItem } from '@/types';
+
+// Quiz Review Modal Component
+function QuizReviewModal({ quiz, isOpen, onClose }: { quiz: QuizHistoryItem; isOpen: boolean; onClose: () => void }) {
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
+            <div className="bg-background border rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+                {/* Modal Header */}
+                <div className="flex items-center justify-between p-6 border-b">
+                    <div>
+                        <h2 className="text-xl font-semibold">Quiz Review</h2>
+                        <p className="text-sm text-muted-foreground">
+                            {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''} • {quiz.percentage}% score
+                        </p>
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={onClose}>
+                        <XCircle className="w-4 h-4" />
+                    </Button>
+                </div>
+
+                {/* Modal Content */}
+                <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                    <div className="space-y-4">
+                        {quiz.review?.map((item, index) => (
+                            <div
+                                key={index}
+                                className={cn(
+                                    "p-4 rounded-lg border",
+                                    item.is_correct
+                                        ? "bg-green-50 border-green-200 dark:bg-green-950 dark:border-green-800"
+                                        : "bg-red-50 border-red-200 dark:bg-red-950 dark:border-red-800"
+                                )}
+                            >
+                                <div className="flex items-start gap-4">
+                                    <span className={cn(
+                                        "shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-sm font-bold",
+                                        item.is_correct
+                                            ? "bg-green-200 text-green-700"
+                                            : "bg-red-200 text-red-700"
+                                    )}>
+                                        {index + 1}
+                                    </span>
+                                    <div className="flex-1 space-y-3">
+                                        <div>
+                                            <p className="font-medium text-base">{item.question}</p>
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <div className="flex items-center gap-3 text-sm">
+                                                <span className="text-muted-foreground font-medium">Your answer:</span>
+                                                <span className={cn(
+                                                    "font-medium",
+                                                    item.is_correct ? "text-green-600" : "text-red-600"
+                                                )}>
+                                                    {item.user_answer || 'Not answered'}
+                                                </span>
+                                            </div>
+                                            {!item.is_correct && (
+                                                <div className="flex items-center gap-3 text-sm">
+                                                    <span className="text-muted-foreground font-medium">Correct answer:</span>
+                                                    <span className="text-green-600 font-medium">{item.correct_answer}</span>
+                                                </div>
+                                            )}
+
+                                            {/* Show all answer options like a real quiz */}
+                                            {item.options && item.options.length > 0 && (
+                                                <div className="mt-3 space-y-2">
+                                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Answer Options:</p>
+                                                    <div className="space-y-1">
+                                                        {item.options.map((option: string | { label: string; text: string }, optIndex: number) => {
+                                                            const optionLetter = String.fromCharCode(65 + optIndex); // A, B, C, D
+                                                            const optionText = typeof option === 'string' ? option : option.text || option.label;
+                                                            const isUserAnswer = item.user_answer === optionText;
+                                                            const isCorrectAnswer = item.correct_answer === optionText;
+
+                                                            return (
+                                                                <div
+                                                                    key={optIndex}
+                                                                    className={cn(
+                                                                        "flex items-center gap-2 p-2 rounded text-sm border",
+                                                                        isUserAnswer && isCorrectAnswer
+                                                                            ? "bg-green-100 border-green-300 text-green-800"
+                                                                            : isUserAnswer && !isCorrectAnswer
+                                                                                ? "bg-red-100 border-red-300 text-red-800"
+                                                                                : isCorrectAnswer
+                                                                                    ? "bg-green-50 border-green-200 text-green-700"
+                                                                                    : "bg-muted/30 border-border"
+                                                                    )}
+                                                                >
+                                                                    <span className="font-medium">{optionLetter}.</span>
+                                                                    <span className="flex-1">{optionText}</span>
+                                                                    {isUserAnswer && isCorrectAnswer && (
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                                                    )}
+                                                                    {isUserAnswer && !isCorrectAnswer && (
+                                                                        <XCircle className="w-4 h-4 text-red-600" />
+                                                                    )}
+                                                                    {isCorrectAnswer && !isUserAnswer && (
+                                                                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                                                    )}
+                                                                </div>
+                                                            );
+                                                        })}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {item.explanation && (
+                                                <div className="text-sm text-muted-foreground italic p-3 bg-muted/30 rounded-lg border-l-4 border-primary">
+                                                    💡 <strong>Explanation:</strong> {item.explanation}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {item.is_correct ? (
+                                        <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+                                    ) : (
+                                        <XCircle className="w-5 h-5 text-red-600 shrink-0" />
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* Modal Footer */}
+                <div className="flex items-center justify-between p-6 border-t bg-muted/30">
+                    <div className="text-sm text-muted-foreground">
+                        {quiz.correct_count} correct • {quiz.incorrect_count} incorrect • {quiz.skipped_count || 0} skipped
+                    </div>
+                    <Button onClick={onClose}>Close Review</Button>
+                </div>
+            </div>
+        </div>
+    );
+}
 
 // Add custom styles for animations
 const customStyles = `
@@ -60,6 +198,7 @@ type ProgressStats = {
         week: {
             sessions: number;
             minutes: number;
+            xp: number;
             target_minutes: number;
             target_percent: number | null;
         };
@@ -76,6 +215,7 @@ type ProgressStats = {
         progress_percent: number;
         value: number;
         goal: number;
+        xp_reward: number;
     }>;
     series: Array<{ date: string; minutes: number; sessions: number; xp: number }>;
     insight: string;
@@ -179,6 +319,13 @@ function formatMinutes(minutes: number): string {
     return r === 0 ? `${h}h` : `${h}h ${r}m`;
 }
 
+// Helper function to format streak text grammatically
+function formatStreak(days: number): string {
+    if (days === 0) return 'No streak yet';
+    if (days === 1) return '1 day streak';
+    return `${days} day streak`;
+}
+
 // Helper function to extract option text
 function getOptionText(option: string | { label: string; text: string }): string {
     if (typeof option === 'string') return option;
@@ -187,198 +334,132 @@ function getOptionText(option: string | { label: string; text: string }): string
 
 // Quiz Card Component
 function QuizCard({ quiz }: { quiz: QuizHistoryItem }) {
-    const [expanded, setExpanded] = useState(false);
+    const [showReviewModal, setShowReviewModal] = useState(false);
     const hasReview = quiz.review && quiz.review.length > 0;
 
     return (
-        <Card className="border bg-card shadow-sm hover:shadow-md transition-all duration-200">
-            <CardContent className="p-4">
-                {/* Summary Row */}
-                <div className="flex items-center gap-3">
-                    <div className="shrink-0">
-                        {quiz.passed ? (
-                            <div className="bg-green-100 text-green-600 rounded-full p-2">
-                                <CheckCircle2 className="w-4 h-4" />
-                            </div>
-                        ) : (
-                            <div className="bg-red-100 text-red-600 rounded-full p-2">
-                                <XCircle className="w-4 h-4" />
-                            </div>
-                        )}
-                    </div>
-
-                    <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                            <p className="text-sm font-semibold truncate">
-                                {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''}
-                            </p>
-                            <Badge
-                                variant={quiz.passed ? 'default' : 'destructive'}
-                                className="shrink-0 text-xs"
-                            >
-                                {quiz.percentage}%
-                            </Badge>
-                        </div>
-                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                            <span>{quiz.correct_count}/{quiz.total_questions} correct</span>
-                            {quiz.taken_at && (
-                                <span>{formatDistanceToNow(parseISO(quiz.taken_at), { addSuffix: true })}</span>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setExpanded(!expanded)}
-                            className="h-8 w-8 p-0"
-                        >
-                            {expanded ? (
-                                <ChevronUp className="w-4 h-4" />
+        <>
+            <Card className="border bg-card shadow-sm hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 group overflow-hidden active-press border-2 hover:border-primary/20">
+                <CardContent className="p-5 relative z-10">
+                    {/* Summary Row */}
+                    <div className="flex items-center gap-3">
+                        <div className="shrink-0">
+                            {quiz.passed ? (
+                                <div className="bg-green-100 text-green-600 rounded-full p-2">
+                                    <CheckCircle2 className="w-4 h-4" />
+                                </div>
                             ) : (
-                                <ChevronDown className="w-4 h-4" />
+                                <div className="bg-red-100 text-red-600 rounded-full p-2">
+                                    <XCircle className="w-4 h-4" />
+                                </div>
                             )}
+                        </div>
+
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                                <p className="text-lg font-black truncate group-hover:translate-x-1 transition-transform">
+                                    {quiz.subject}{quiz.topic ? `: ${quiz.topic}` : ''}
+                                </p>
+                                <Badge
+                                    variant={quiz.passed ? 'default' : 'destructive'}
+                                    className="shrink-0 text-xs font-bold"
+                                >
+                                    {quiz.percentage}%
+                                </Badge>
+                            </div>
+                            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span>{quiz.correct_count}/{quiz.total_questions} correct</span>
+                                {quiz.taken_at && (
+                                    <span>{formatDistanceToNow(parseISO(quiz.taken_at), { addSuffix: true })}</span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Quick Stats */}
+                    <div className="grid grid-cols-3 gap-3 mt-4">
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                            <p className="text-lg font-bold text-green-700">{quiz.correct_count}</p>
+                            <p className="text-xs text-green-600">Correct</p>
+                        </div>
+                        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
+                            <p className="text-lg font-bold text-red-700">{quiz.incorrect_count}</p>
+                            <p className="text-xs text-red-600">Incorrect</p>
+                        </div>
+                        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                            <p className="text-lg font-bold text-gray-700">{quiz.skipped_count || 0}</p>
+                            <p className="text-xs text-gray-600">Skipped</p>
+                        </div>
+                    </div>
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2 mt-4">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-xs"
+                            disabled={!hasReview}
+                            onClick={() => setShowReviewModal(true)}
+                        >
+                            <Eye className="w-3 h-3 mr-1" />
+                            {hasReview ? 'View Review' : 'Review N/A'}
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="flex-1 text-xs"
+                            onClick={() => {
+                                // Navigate back to study planner to retake quiz
+                                window.location.href = '/study-planner';
+                            }}
+                        >
+                            <RotateCcw className="w-3 h-3 mr-1" />
+                            Back to Study
                         </Button>
                     </div>
-                </div>
 
-                {/* Expanded Details */}
-                {expanded && (
-                    <div className="mt-4 pt-4 border-t space-y-4 animate-slide-down">
-                        {/* Quick Stats */}
-                        <div className="grid grid-cols-3 gap-3">
-                            <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
-                                <p className="text-lg font-bold text-green-700">{quiz.correct_count}</p>
-                                <p className="text-xs text-green-600">Correct</p>
+                    {/* Performance Message */}
+                    <div className={cn(
+                        "p-3 rounded-lg text-xs mt-4",
+                        quiz.passed
+                            ? "bg-green-50 border border-green-200 text-green-700"
+                            : "bg-orange-50 border border-orange-200 text-orange-700"
+                    )}>
+                        {quiz.passed ? (
+                            <div className="flex items-center gap-2">
+                                <CheckCircle2 className="w-3 h-3" />
+                                <span className="font-medium">Excellent work! You've mastered this topic.</span>
                             </div>
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-center">
-                                <p className="text-lg font-bold text-red-700">{quiz.incorrect_count}</p>
-                                <p className="text-xs text-red-600">Incorrect</p>
-                            </div>
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
-                                <p className="text-lg font-bold text-gray-700">{quiz.skipped_count || 0}</p>
-                                <p className="text-xs text-gray-600">Skipped</p>
-                            </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex gap-2">
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1 text-xs"
-                                disabled={!hasReview}
-                                onClick={() => {
-                                    // Navigate to detailed review (if available)
-                                    if (hasReview) {
-                                        // TODO: Create this route in backend
-                                        console.log('Navigate to review:', quiz.id);
-                                        alert('Detailed review feature coming soon!');
-                                    }
-                                }}
-                            >
-                                <Eye className="w-3 h-3 mr-1" />
-                                {hasReview ? 'Full Review' : 'Review N/A'}
-                            </Button>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="flex-1 text-xs"
-                                onClick={() => {
-                                    // Navigate back to study planner to retake quiz
-                                    window.location.href = '/study-planner';
-                                }}
-                            >
-                                <RotateCcw className="w-3 h-3 mr-1" />
-                                Back to Study
-                            </Button>
-                        </div>
-
-                        {/* Question Preview (only if review data available) */}
-                        {hasReview && (
-                            <div className="space-y-2">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Question Preview</p>
-                                <div className="space-y-2 max-h-40 overflow-y-auto">
-                                    {quiz.review?.slice(0, 3).map((item, index) => (
-                                        <div
-                                            key={index}
-                                            className={cn(
-                                                "p-2 rounded-lg border text-xs",
-                                                item.is_correct
-                                                    ? "bg-green-50 border-green-200"
-                                                    : "bg-red-50 border-red-200"
-                                            )}
-                                        >
-                                            <div className="flex items-start gap-2">
-                                                <span className="shrink-0 w-4 h-4 rounded-full bg-muted flex items-center justify-center text-[10px] font-bold">
-                                                    {index + 1}
-                                                </span>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-medium truncate">{item.question}</p>
-                                                    <div className="mt-1 flex items-center gap-2">
-                                                        <span className="text-muted-foreground">Your: {item.user_answer}</span>
-                                                        {!item.is_correct && (
-                                                            <>
-                                                                <span className="text-muted-foreground">→</span>
-                                                                <span className="text-green-600">Correct: {item.correct_answer}</span>
-                                                            </>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                                {item.is_correct ? (
-                                                    <CheckCircle2 className="w-3 h-3 text-green-600 shrink-0" />
-                                                ) : (
-                                                    <XCircle className="w-3 h-3 text-red-600 shrink-0" />
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
-                                    {quiz.review && quiz.review.length > 3 && (
-                                        <p className="text-xs text-muted-foreground text-center py-2">
-                                            ... and {quiz.review.length - 3} more questions
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Performance Message */}
-                        <div className={cn(
-                            "p-3 rounded-lg text-xs",
-                            quiz.passed
-                                ? "bg-green-50 border border-green-200 text-green-700"
-                                : "bg-orange-50 border border-orange-200 text-orange-700"
-                        )}>
-                            {quiz.passed ? (
-                                <div className="flex items-center gap-2">
-                                    <CheckCircle2 className="w-3 h-3" />
-                                    <span className="font-medium">Excellent work! You've mastered this topic.</span>
-                                </div>
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <Target className="w-3 h-3" />
-                                    <span className="font-medium">Keep practicing! Review the incorrect answers to improve.</span>
-                                </div>
-                            )}
-                        </div>
-
-                        {/* No Review Data Message */}
-                        {!hasReview && (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700">
-                                <div className="flex items-center gap-2">
-                                    <Eye className="w-3 h-3" />
-                                    <div>
-                                        <span className="font-medium">Detailed review data not available</span>
-                                        <p className="text-blue-600 mt-1">Future quizzes will save detailed answers for review.</p>
-                                    </div>
-                                </div>
+                        ) : (
+                            <div className="flex items-center gap-2">
+                                <Target className="w-3 h-3" />
+                                <span className="font-medium">Keep practicing! Review the incorrect answers to improve.</span>
                             </div>
                         )}
                     </div>
-                )}
-            </CardContent>
-        </Card>
+
+                    {/* No Review Data Message */}
+                    {!hasReview && (
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-700 mt-4">
+                            <div className="flex items-center gap-2">
+                                <Eye className="w-3 h-3" />
+                                <div>
+                                    <span className="font-medium">Detailed review data not available</span>
+                                    <p className="text-blue-600 mt-1">Future quizzes will save detailed answers for review.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Review Modal */}
+            <QuizReviewModal
+                quiz={quiz}
+                isOpen={showReviewModal}
+                onClose={() => setShowReviewModal(false)}
+            />
+        </>
     );
 }
 
@@ -401,29 +482,65 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
             <Head title="Progress" />
 
             <div className="p-4 md:p-8 max-w-7xl mx-auto space-y-8">
-                <Heading
-                    title="Progress"
-                    description="Your streak, XP, achievements, and weekly momentum"
-                />
+                <div className="animate-fade-in">
+                    <h1 className="text-4xl font-black tracking-tight text-slate-900 dark:text-slate-50">Progress</h1>
+                    <p className="text-muted-foreground mt-2 text-lg">Your streak, XP, achievements, and weekly progress</p>
+                </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <Card className="overflow-hidden border-primary/20 bg-gradient-to-br from-primary/10 via-background to-background">
                         <CardHeader className="pb-2">
-                            <CardDescription>Level</CardDescription>
+                            <CardDescription className="font-bold uppercase tracking-wider text-[10px]">Level</CardDescription>
                             <CardTitle className="flex items-end justify-between gap-3">
-                                <span className="text-3xl font-black tracking-tight">{stats.xp.level}</span>
-                                <Badge variant="secondary" className="gap-1">
-                                    <Sparkles className="w-3 h-3" />
-                                    {stats.xp.total.toLocaleString()} XP
+                                <div>
+                                    <span className="text-4xl font-black tracking-tight">{stats.xp.level}</span>
+                                    <div className="text-xs text-muted-foreground font-bold uppercase tracking-tight mt-1">
+                                        {stats.xp.total.toLocaleString()} / {stats.xp.next_level_at.toLocaleString()} XP
+                                    </div>
+                                </div>
+                                <Badge variant="secondary" className="gap-1 font-bold">
+                                    <Sparkles className="w-3 h-3 text-amber-500" />
+                                    Level {stats.xp.level}
                                 </Badge>
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <Progress value={stats.xp.progress_percent} className="h-2" />
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{stats.xp.into_level.toLocaleString()} XP into level</span>
-                                <span>{xpToNext.toLocaleString()} XP to next</span>
+                            <div className="space-y-2">
+                                <div className="shimmer-wrapper rounded-full">
+                                    <Progress value={stats.xp.progress_percent} className={cn("h-3", stats.xp.progress_percent > 0 && "shimmer-active")} />
+                                </div>
+                                <div className="flex items-center justify-between text-xs font-bold uppercase tracking-tight">
+                                    <span className="text-muted-foreground">
+                                        {stats.xp.into_level.toLocaleString()} earned
+                                    </span>
+                                    <span className="text-amber-600">
+                                        +{xpToNext.toLocaleString()} to next
+                                    </span>
+                                </div>
                             </div>
+
+                            {/* XP Milestones */}
+                            <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="rounded-lg border bg-muted/30 p-2 group-hover:bg-muted/50 transition-colors">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Today</div>
+                                    <div className="text-sm font-black text-green-600">
+                                        +{stats.sessions.today.xp || 0}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border bg-muted/30 p-2 group-hover:bg-muted/50 transition-colors">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Week</div>
+                                    <div className="text-sm font-black text-blue-600">
+                                        +{stats.sessions.week.xp || 0}
+                                    </div>
+                                </div>
+                                <div className="rounded-lg border bg-muted/30 p-2 group-hover:bg-muted/50 transition-colors">
+                                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-bold">Total</div>
+                                    <div className="text-sm font-black text-purple-600">
+                                        {stats.xp.total.toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+
                             <p className="text-xs text-muted-foreground italic leading-relaxed">{stats.insight}</p>
                         </CardContent>
                     </Card>
@@ -432,14 +549,21 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                         <CardHeader className="pb-2">
                             <CardDescription>Streak</CardDescription>
                             <CardTitle className="flex items-center justify-between">
-                                <span className="text-3xl font-black tracking-tight">{stats.streak.current}d</span>
-                                <Flame className="w-6 h-6 text-amber-500" />
+                                <span className={cn('text-3xl font-black tracking-tight', getStreakColor(stats.streak.current))}>
+                                    {formatStreak(stats.streak.current)}
+                                </span>
+                                <StreakIcon streak={stats.streak.current} size="lg" />
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="grid grid-cols-2 gap-3">
                             <div className="rounded-lg border bg-muted/30 p-3">
                                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Best</div>
-                                <div className="mt-1 text-lg font-bold">{stats.streak.best}d</div>
+                                <div className="mt-1 flex items-center gap-2">
+                                    <StreakIcon streak={stats.streak.best} size="sm" />
+                                    <span className={cn('text-lg font-bold', getStreakColor(stats.streak.best))}>
+                                        {formatStreak(stats.streak.best)}
+                                    </span>
+                                </div>
                             </div>
                             <div className="rounded-lg border bg-muted/30 p-3">
                                 <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Today</div>
@@ -448,18 +572,20 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                         </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="relative overflow-hidden group hover:border-primary/20 transition-colors border-2 border-transparent">
                         <CardHeader className="pb-2">
-                            <CardDescription>Weekly Goal</CardDescription>
+                            <CardDescription className="font-bold uppercase tracking-wider text-[10px]">Weekly Goal</CardDescription>
                             <CardTitle className="flex items-center justify-between">
-                                <span className="text-3xl font-black tracking-tight">
+                                <span className="text-4xl font-black tracking-tight tabular-nums">
                                     {stats.sessions.week.target_percent == null ? '—' : `${stats.sessions.week.target_percent}%`}
                                 </span>
-                                <Target className="w-6 h-6 text-primary" />
+                                <Target className="w-6 h-6 text-primary group-hover:scale-110 transition-transform" />
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <Progress value={stats.sessions.week.target_percent ?? 0} className="h-2" />
+                            <div className="shimmer-wrapper rounded-full">
+                                <Progress value={stats.sessions.week.target_percent ?? 0} className={cn("h-2.5", (stats.sessions.week.target_percent ?? 0) > 0 && "shimmer-active")} />
+                            </div>
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
                                 <span>{formatMinutes(stats.sessions.week.minutes)} studied</span>
                                 <span>
@@ -470,7 +596,7 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                             </div>
                         </CardContent>
                     </Card>
-                </div>
+                </div >
 
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <Card className="lg:col-span-2">
@@ -482,7 +608,7 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                             <CardDescription>XP and minutes over time</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="h-[220px]">
+                            <div className="h-[250px] w-full">
                                 <ResponsiveContainer width="100%" height={220}>
                                     <AreaChart data={stats.series} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
                                         <defs>
@@ -509,9 +635,12 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                                 if (active && payload?.length) {
                                                     const data = payload[0].payload;
                                                     return (
-                                                        <div className="bg-background border rounded-lg p-2 shadow-lg">
-                                                            <p className="text-sm font-medium">{format(parseISO(data.date), 'MMM d')}</p>
-                                                            <p className="text-sm text-muted-foreground">{data.xp} XP</p>
+                                                        <div className="bg-background/90 backdrop-blur-md border-2 border-primary/20 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                                                            <p className="text-xs font-black uppercase tracking-widest text-primary mb-1">{format(parseISO(data.date), 'EEEE, MMM d')}</p>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-2 h-2 rounded-full bg-primary" />
+                                                                <p className="text-lg font-black tracking-tight">{data.xp} <span className="text-[10px] text-muted-foreground uppercase">XP Earned</span></p>
+                                                            </div>
                                                         </div>
                                                     );
                                                 }
@@ -550,9 +679,12 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                                 if (active && payload?.length) {
                                                     const data = payload[0].payload;
                                                     return (
-                                                        <div className="bg-background border rounded-lg p-2 shadow-lg">
-                                                            <p className="text-sm font-medium">{format(parseISO(data.date), 'MMM d')}</p>
-                                                            <p className="text-sm text-muted-foreground">{formatMinutes(data.minutes)}</p>
+                                                        <div className="bg-background/90 backdrop-blur-md border-2 border-primary/20 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+                                                            <p className="text-xs font-black uppercase tracking-widest text-primary mb-1">{format(parseISO(data.date), 'EEEE, MMM d')}</p>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-2 h-2 rounded-full bg-primary" />
+                                                                <p className="text-lg font-black tracking-tight">{formatMinutes(data.minutes)} <span className="text-[10px] text-muted-foreground uppercase">Studied</span></p>
+                                                            </div>
                                                         </div>
                                                     );
                                                 }
@@ -572,25 +704,40 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                 <Award className="w-5 h-5 text-primary" />
                                 Achievements
                             </CardTitle>
-                            <CardDescription>Small wins create unstoppable momentum.</CardDescription>
+                            <CardDescription>Small wins create unstoppable progress.</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {stats.achievements.map((a) => (
-                                <div key={a.id} className="rounded-xl border bg-muted/20 p-3">
+                                <div key={a.id} className="rounded-xl border bg-muted/20 p-4 hover:scale-[1.02] hover:bg-muted/30 transition-all cursor-default group/ach">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="min-w-0">
-                                            <div className="font-bold truncate">{a.title}</div>
-                                            <div className="text-xs text-muted-foreground">{a.description}</div>
+                                            <div className="font-black text-lg truncate group-hover/ach:translate-x-1 transition-transform">{a.title}</div>
+                                            <div className="text-xs text-muted-foreground font-medium">{a.description}</div>
+                                            {a.unlocked && (
+                                                <div className="mt-1 flex items-center gap-1">
+                                                    <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+                                                    <span className="text-xs font-bold text-amber-600 uppercase tracking-tight">+{a.xp_reward} XP Rewarded</span>
+                                                </div>
+                                            )}
                                         </div>
-                                        <Badge variant={a.unlocked ? 'default' : 'secondary'} className="shrink-0">
-                                            {a.unlocked ? 'Unlocked' : `${a.progress_percent}%`}
-                                        </Badge>
+                                        <div className="flex flex-col items-end gap-2">
+                                            <Badge variant={a.unlocked ? 'default' : 'secondary'} className={cn("shrink-0 font-bold", a.unlocked && "bg-amber-500 hover:bg-amber-600")}>
+                                                {a.unlocked ? 'Unlocked' : `${a.progress_percent}%`}
+                                            </Badge>
+                                            {!a.unlocked && (
+                                                <div className="text-[10px] font-bold text-amber-600 uppercase tracking-tighter">
+                                                    +{a.xp_reward} XP Reward
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="mt-3 space-y-2">
-                                        <Progress value={a.progress_percent} className="h-2" />
-                                        <div className="flex justify-between text-[11px] text-muted-foreground">
-                                            <span>{a.value}/{a.goal}</span>
-                                            <span>{a.unlocked ? 'Completed' : 'In progress'}</span>
+                                    <div className="mt-4 space-y-2">
+                                        <div className="shimmer-wrapper rounded-full">
+                                            <Progress value={a.progress_percent} className={cn("h-2", a.progress_percent > 0 && "shimmer-active")} />
+                                        </div>
+                                        <div className="flex justify-between text-[11px] font-bold text-muted-foreground/80 lowercase tracking-tight">
+                                            <span>{a.value} / {a.goal}</span>
+                                            <span className="uppercase tracking-widest">{a.unlocked ? 'Completed' : 'In progress'}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -668,10 +815,10 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                 </CardTitle>
                                 <CardDescription>Your quiz scores over time</CardDescription>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="h-[300px]">
                                 {quizTrends?.score_trend && quizTrends.score_trend.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={200}>
-                                        <AreaChart data={quizTrends.score_trend}>
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <AreaChart data={quizTrends.score_trend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                                             <XAxis
                                                 dataKey="date"
@@ -760,51 +907,43 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2">
-                                    <Flame className="w-5 h-5 text-orange-500" />
+                                    <StreakIcon streak={stats.streak.current} size="md" />
                                     Recent Performance
                                 </CardTitle>
                                 <CardDescription>Last 10 quizzes average</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Last 5 Quizzes</span>
-                                        <span className="font-semibold">
-                                            {quizHistory.length >= 5
-                                                ? `${Math.round(quizHistory.slice(0, 5).reduce((sum, q) => sum + q.percentage, 0) / 5)}%`
-                                                : 'N/A'
-                                            }
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Last 10 Quizzes</span>
-                                        <span className="font-semibold">
-                                            {quizHistory.length >= 10
-                                                ? `${Math.round(quizHistory.slice(0, 10).reduce((sum, q) => sum + q.percentage, 0) / 10)}%`
-                                                : quizHistory.length > 0
-                                                    ? `${Math.round(quizHistory.reduce((sum, q) => sum + q.percentage, 0) / quizHistory.length)}%`
-                                                    : 'N/A'
-                                            }
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Best Score</span>
-                                        <span className="font-semibold text-green-600">
-                                            {quizHistory.length > 0
-                                                ? `${Math.max(...quizHistory.map(q => q.percentage))}%`
-                                                : 'N/A'
-                                            }
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-sm text-muted-foreground">Most Recent</span>
-                                        <span className="font-semibold">
-                                            {quizHistory.length > 0
-                                                ? `${quizHistory[0].percentage}%`
-                                                : 'N/A'
-                                            }
-                                        </span>
-                                    </div>
+                                    {quizHistory.length >= 1 && (
+                                        <>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Recent Avg. (Last 10)</span>
+                                                <span className="font-semibold">
+                                                    {quizHistory.length >= 10
+                                                        ? `${Math.round(quizHistory.slice(0, 10).reduce((sum, q) => sum + q.percentage, 0) / 10)}%`
+                                                        : `${Math.round(quizHistory.reduce((sum, q) => sum + q.percentage, 0) / quizHistory.length)}%`
+                                                    }
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Best Score</span>
+                                                <span className="font-semibold text-green-600">
+                                                    {Math.max(...quizHistory.map(q => q.percentage))}%
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-sm text-muted-foreground">Most Recent</span>
+                                                <span className="font-semibold text-primary">
+                                                    {quizHistory[0].percentage}%
+                                                </span>
+                                            </div>
+                                        </>
+                                    )}
+                                    {quizHistory.length === 0 && (
+                                        <div className="text-center py-4">
+                                            <p className="text-xs text-muted-foreground">No quiz data yet. Take your first quiz to see insights!</p>
+                                        </div>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
@@ -813,10 +952,10 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                         <Card>
                             <CardHeader className="pb-2">
                                 <CardTitle className="flex items-center gap-2">
-                                    <Award className="w-5 h-5 text-yellow-500" />
-                                    Strongest Areas
+                                    <Award className="w-5 h-5 text-amber-500" />
+                                    Strengths
                                 </CardTitle>
-                                <CardDescription>Topics you excel at</CardDescription>
+                                <CardDescription>Your highest performing subjects</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-2">

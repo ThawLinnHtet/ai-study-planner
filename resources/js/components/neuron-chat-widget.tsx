@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
 import { usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Bot, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import NeuronChatPanel, {
     type NeuronChatMessage,
     type NeuronChatThread,
@@ -50,6 +50,11 @@ export default function NeuronChatWidget({ className }: Props) {
     const page = usePage<SharedData>();
     const user = page.props.auth?.user;
     const [open, setOpen] = useState(false);
+
+    // Hide chat on specific pages for focus/integrity
+    const isQuizPage = page.component.toLowerCase().includes('quiz');
+    const isOnboarding = page.component.toLowerCase().includes('onboarding');
+
     const [chatData, setChatData] = useState<{
         threadId: number;
         threads: NeuronChatThread[];
@@ -75,7 +80,7 @@ export default function NeuronChatWidget({ className }: Props) {
         return data;
     });
 
-    if (!user) return null;
+    if (!user || isQuizPage || isOnboarding) return null;
 
     // Track previous user ID to detect user changes
     const previousUserIdRef = useRef<number | string | null>(null);

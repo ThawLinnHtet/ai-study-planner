@@ -27,7 +27,7 @@ class StudyHoursValidator
     /**
      * Validate and adjust study hours based on focus capacity
      */
-    public static function validateAndAdjust(int $requestedHours, string $peakTime): array
+    public static function validateAndAdjust(int $requestedHours): array
     {
         $result = [
             'original_hours' => $requestedHours,
@@ -70,8 +70,7 @@ class StudyHoursValidator
 
         // Generate optimal session distribution
         $result['session_distribution'] = self::generateSessionDistribution(
-            $result['recommended_hours'],
-            $peakTime
+            $result['recommended_hours']
         );
 
         return $result;
@@ -80,10 +79,10 @@ class StudyHoursValidator
     /**
      * Generate optimal session distribution based on focus capacity
      */
-    private static function generateSessionDistribution(int $hours, string $peakTime): array
+    private static function generateSessionDistribution(int $hours): array
     {
         $distribution = [
-            'high_focus' => ['hours' => 0, 'sessions' => [], 'timing' => $peakTime],
+            'high_focus' => ['hours' => 0, 'sessions' => [], 'timing' => 'flexible'],
             'medium_focus' => ['hours' => 0, 'sessions' => [], 'timing' => 'flexible'],
             'low_focus' => ['hours' => 0, 'sessions' => [], 'timing' => 'flexible'],
             'breaks' => ['hours' => 0, 'sessions' => []],
@@ -92,7 +91,7 @@ class StudyHoursValidator
 
         $remainingHours = $hours;
 
-        // Allocate high-focus sessions during peak time
+        // Allocate high-focus sessions
         $highFocusHours = min(self::MAX_HIGH_FOCUS_HOURS, $remainingHours);
         $distribution['high_focus']['hours'] = $highFocusHours;
         $remainingHours -= $highFocusHours;
@@ -114,7 +113,7 @@ class StudyHoursValidator
         $distribution['high_focus']['sessions'] = self::generateSessions(
             $highFocusHours,
             'high',
-            $peakTime
+            'flexible'
         );
 
         $distribution['medium_focus']['sessions'] = self::generateSessions(

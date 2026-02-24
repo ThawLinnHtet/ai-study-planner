@@ -9,18 +9,31 @@ use App\Models\User;
 
 class QuizService
 {
-    protected const PASS_PERCENTAGE = 80;
+    protected const PASS_PERCENTAGE = 70;
     protected const QUESTIONS_PER_QUIZ = 10;
 
     /**
      * Generate a quiz for a study session topic.
      */
-    public function generateForSession(User $user, string $subject, string $topic): Quiz
+    public function generateForSession(User $user, string $subject, string $topic, bool $isRetry = false): Quiz
     {
         $agent = QuizAgent::make();
+        
+        // Add retry context to topic to ensure different questions
+        $topicWithContext = $topic;
+        if ($isRetry) {
+            // Get previous quiz count for this topic to ensure variety
+            $previousCount = Quiz::where('user_id', $user->id)
+                ->where('settings->subject', $subject)
+                ->where('settings->topic', $topic)
+                ->count();
+            
+            $topicWithContext = "{$topic} (Retry #{$previousCount} - Focus on different aspects)";
+        }
+        
         $output = $agent->generate(
             subject: $subject,
-            topic: $topic,
+            topic: $topicWithContext,
             count: self::QUESTIONS_PER_QUIZ,
             difficulty: 'medium',
         );
@@ -41,7 +54,9 @@ class QuizService
             'user_id' => $user->id,
             'study_plan_id' => $activePlanId,
             'title' => "{$subject}: {$topic}",
-            'description' => "Quiz to validate understanding of {$topic}",
+            'description' => $isRetry 
+                ? "Retry quiz covering different aspects of {$topic}"
+                : "Quiz to validate understanding of {$topic}",
             'difficulty' => 'medium',
             'total_questions' => count($questions),
             'questions' => $questions,
@@ -49,6 +64,8 @@ class QuizService
                 'subject' => $subject,
                 'topic' => $topic,
                 'pass_percentage' => self::PASS_PERCENTAGE,
+                'is_retry' => $isRetry,
+                'generated_at' => now()->toIso8601String(),
             ],
         ]);
     }
@@ -109,7 +126,7 @@ class QuizService
     /**
      * Submit quiz answers and calculate results.
      */
-    public function submitAnswers(User $user, Quiz $quiz, array $answers, ?int $studySessionId = null): QuizResult
+    public function submitAnswers(User $user, Quiz $quiz, array $answers, ?int $studySessionId = null, ?array $antiCheatData = null): QuizResult
     {
         $questions = $quiz->questions ?? [];
         $correctCount = 0;
@@ -153,6 +170,13 @@ class QuizService
         $totalQuestions = count($questions);
         $percentage = $totalQuestions > 0 ? round(($correctCount / $totalQuestions) * 100, 2) : 0;
 
+        // Calculate duration from anti-cheat data
+        $durationSeconds = null;
+        if ($antiCheatData && isset($antiCheatData['total_time'])) {
+            // Frontend sends total_time in seconds, not milliseconds
+            $durationSeconds = (int) $antiCheatData['total_time'];
+        }
+
         return QuizResult::create([
             'user_id' => $user->id,
             'quiz_id' => $quiz->id,
@@ -164,6 +188,7 @@ class QuizService
             'correct_count' => $correctCount,
             'incorrect_count' => $incorrectCount,
             'skipped_count' => $skippedCount,
+            'duration_seconds' => $durationSeconds,
             'answers' => $detailedAnswers,
             'meta' => [
                 'subject' => $quiz->settings['subject'] ?? '',

@@ -18,11 +18,6 @@ return new class extends Migration
                 ->constrained()
                 ->cascadeOnDelete();
 
-            $table->foreignId('subject_id')
-                ->nullable()
-                ->constrained('subjects')
-                ->nullOnDelete();
-
             $table->string('title');
             $table->text('goal')->nullable();
 
@@ -33,14 +28,14 @@ return new class extends Migration
 
             $table->string('status')->default('draft');
 
-            $table->json('preferences')->nullable();
             $table->json('generated_plan')->nullable();
+            
+            $table->timestamp('prevent_rebalance_until')->nullable();
 
             $table->timestamps();
             $table->softDeletes();
 
             $table->index(['user_id', 'status']);
-            $table->index(['user_id', 'subject_id']);
         });
     }
 

@@ -15,12 +15,10 @@ class ChatThread extends Model
         'user_id',
         'provider_thread_id',
         'title',
-        'metadata',
         'last_message_at',
     ];
 
     protected $casts = [
-        'metadata' => 'array',
         'last_message_at' => 'datetime',
     ];
 

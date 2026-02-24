@@ -32,7 +32,6 @@ export default function OnboardingAvailability() {
     const form = useForm({
         daily_study_hours: Number((auth.user as { daily_study_hours?: number } | undefined)?.daily_study_hours ?? 2),
         productivity_peak: (auth.user as { productivity_peak?: string } | undefined)?.productivity_peak ?? 'morning',
-        learning_style: (auth.user as { learning_style?: string } | undefined)?.learning_style ?? '',
         timezone: (auth.user as { timezone?: string } | undefined)?.timezone ?? '',
     });
 
@@ -184,25 +183,6 @@ export default function OnboardingAvailability() {
                                 <p className="text-sm text-gray-600">
                                     When do you feel most focused and productive?
                                 </p>
-                            </div>
-
-                            <div className="grid gap-2">
-                                <Label htmlFor="learning_style">
-                                    Learning style (optional)
-                                </Label>
-                                <Input
-                                    id="learning_style"
-                                    name="learning_style"
-                                    value={form.data.learning_style}
-                                    onChange={(e) =>
-                                        form.setData(
-                                            'learning_style',
-                                            e.target.value,
-                                        )
-                                    }
-                                    placeholder="visual / auditory / reading / kinesthetic"
-                                />
-                                <InputError message={form.errors.learning_style} />
                             </div>
 
                             <div className="grid gap-2">

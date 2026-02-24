@@ -13,7 +13,8 @@ class StudySession extends Model
     protected $fillable = [
         'user_id',
         'study_plan_id',
-        'subject_id',
+        'learning_path_id',
+        'day_number',
         'started_at',
         'ended_at',
         'duration_minutes',
@@ -42,8 +43,8 @@ class StudySession extends Model
         return $this->belongsTo(StudyPlan::class);
     }
 
-    public function subject(): BelongsTo
+    public function learningPath(): BelongsTo
     {
-        return $this->belongsTo(Subject::class);
+        return $this->belongsTo(LearningPath::class);
     }
 }

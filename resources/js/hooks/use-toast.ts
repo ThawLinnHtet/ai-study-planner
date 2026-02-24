@@ -1,11 +1,11 @@
 import { toast as sonnerToast } from 'sonner';
 
 export const toast = {
-  success: (message: string) => sonnerToast.success(message),
-  error: (message: string) => sonnerToast.error(message),
-  info: (message: string) => sonnerToast.info(message),
-  warning: (message: string) => sonnerToast.warning(message),
-  loading: (message: string) => sonnerToast.loading(message),
+  success: (message: string, options?: any) => sonnerToast.success(message, options),
+  error: (message: string, options?: any) => sonnerToast.error(message, options),
+  info: (message: string, options?: any) => sonnerToast.info(message, options),
+  warning: (message: string, options?: any) => sonnerToast.warning(message, options),
+  loading: (message: string, options?: any) => sonnerToast.loading(message, options),
 };
 
 export const useToast = () => toast;

@@ -13,7 +13,6 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('provider_thread_id')->unique();
             $table->string('title')->nullable();
-            $table->json('metadata')->nullable();
             $table->timestamp('last_message_at')->nullable();
             $table->timestamps();
 

@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\AiMessage;
 use App\Models\ChatThread;
 use App\Models\ChatMessage;
 use App\Models\StudyPlan;
@@ -36,7 +35,6 @@ class NeuronChatService
             'user_id' => $user->id,
             'provider_thread_id' => $providerThreadId,
             'title' => $title ?? 'New Chat',
-            'metadata' => [],
         ]);
     }
 
@@ -400,7 +398,7 @@ class NeuronChatService
             "GENERAL SUBJECT HELP (Priority 3 - Strategy & motivation):\n".
             "- User's enrolled subjects: {$subjects}\n".
             "- Answer general study strategy questions for their subjects\n".
-            "- Provide motivation, study tips, and exam preparation advice\n".
+            "- Provide motivation and study tips\n".
             "- Help with overall subject understanding\n\n".
             "HARD BOUNDARY - REJECT EVERYTHING ELSE:\n".
             "- If topic is NOT in their subjects, respond with this format:\n".
@@ -547,7 +545,6 @@ class NeuronChatService
                 'timezone' => $user->timezone,
                 'subjects' => $user->subjects ?? [],
                 'daily_study_hours' => $user->daily_study_hours,
-                'productivity_peak' => $user->productivity_peak,
                 'study_goal' => $user->study_goal,
             ],
             'progress' => [

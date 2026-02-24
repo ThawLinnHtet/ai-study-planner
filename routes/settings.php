@@ -3,11 +3,11 @@
 use App\Http\Controllers\Settings\OnboardingSettingsController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
-use App\Http\Controllers\Settings\TwoFactorAuthenticationController;
+
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', \App\Http\Middleware\EnsureOnboarded::class])->group(function () {
     Route::redirect('settings', '/settings/overview');
 
     Route::get('settings/overview', function () {
@@ -16,13 +16,15 @@ Route::middleware(['auth'])->group(function () {
 
     Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::post('settings/profile/picture', [ProfileController::class, 'updatePicture'])->name('profile.picture.update');
+    Route::delete('settings/profile/picture', [ProfileController::class, 'deletePicture'])->name('profile.picture.delete');
 
     Route::get('settings/onboarding', [OnboardingSettingsController::class, 'edit'])->name('onboarding-settings.edit');
     Route::put('settings/onboarding', [OnboardingSettingsController::class, 'update'])->name('onboarding-settings.update');
     Route::post('settings/onboarding/reset', [OnboardingSettingsController::class, 'reset'])->name('onboarding-settings.reset');
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', \App\Http\Middleware\EnsureOnboarded::class])->group(function () {
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('settings/password', [PasswordController::class, 'edit'])->name('user-password.edit');
@@ -34,7 +36,4 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');
     })->name('appearance.edit');
-
-    Route::get('settings/two-factor', [TwoFactorAuthenticationController::class, 'show'])
-        ->name('two-factor.show');
 });

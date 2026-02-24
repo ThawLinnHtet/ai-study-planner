@@ -32,3 +32,26 @@ Artisan::command('neuron:test', function () {
 
 // Schedule auto-purge of soft-deleted AI messages daily at midnight
 Schedule::command('ai:purge-deleted --days=30')->daily();
+
+// Schedule reminder processing every minute for real-time notifications
+Schedule::command('reminders:send')->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Schedule reminder window inference daily at 3 AM
+Schedule::command('reminders:infer-windows')->dailyAt('03:00')
+    ->withoutOverlapping();
+
+// Schedule life refill reminders every 5 minutes
+Schedule::command('reminders:life-refill')->everyFiveMinutes()
+    ->withoutOverlapping();
+
+// Behavior-based email/app reminders — check hourly
+Schedule::command('emails:send-behavior')->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Reset daily email counters at midnight
+Schedule::command('emails:reset-counters')->daily()
+    ->withoutOverlapping();
+

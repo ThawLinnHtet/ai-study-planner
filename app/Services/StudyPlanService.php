@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\AI\Neuron\NeuronService;
+use App\AI\Neuron\Output\PlannerOutput;
 use App\Models\StudyPlan;
 use App\Models\User;
+use App\Services\SubjectCurriculumTemplates;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -22,16 +24,27 @@ class StudyPlanService
      */
     public function generateInitialPlan(User $user): StudyPlan
     {
+        $timezone = $user->timezone ?? config('app.timezone');
+        $today = Carbon::today($timezone);
+
+        $learningPaths = $user->learningPaths()
+            ->where('status', 'active')
+            ->get()
+            ->mapWithKeys(function ($path) {
+                return [$path->subject_name => $path->curriculum];
+            })->toArray();
+
         $data = [
             'subjects' => $user->subjects,
-            'exam_dates' => $user->exam_dates,
             'subject_difficulties' => $user->subject_difficulties,
             'subject_session_durations' => $user->subject_session_durations ?? [],
+            'subject_start_dates' => $user->subject_start_dates ?? [],
+            'subject_end_dates' => $user->subject_end_dates ?? [],
+            'learning_paths' => $learningPaths,
             'daily_study_hours' => $user->daily_study_hours,
-            'productivity_peak' => $user->productivity_peak,
             'study_goal' => $user->study_goal,
-            'current_day' => Carbon::today()->format('l'),
-            'current_date' => Carbon::today()->toDateString(),
+            'current_day' => $today->format('l'),
+            'current_date' => $today->toDateString(),
         ];
 
         return $this->generatePlanWithData($user, $data);
@@ -42,22 +55,41 @@ class StudyPlanService
      */
     public function generatePlanWithData(User $user, array $data): StudyPlan
     {
-        // Ensure fresh data is passed to AI
+        $timezone = $user->timezone ?? config('app.timezone');
+        $today = Carbon::today($timezone);
+
+        // Ensure fresh data is passed to AI with cycle context
+        // Standardized to 30-day (Monthly) cycles
+        $planDuration = 'monthly';
+        $cycleDays = 30;
         $planData = array_merge($data, [
-            'current_day' => Carbon::today()->format('l'),
-            'current_date' => Carbon::today()->toDateString(),
+            'current_day' => $today->format('l'),
+            'current_date' => $today->toDateString(),
+            'cycle_days' => $cycleDays,
+            'planning_mode' => 'adaptive_cycle',
+            'cycle_instruction' => "Generate a study schedule for ONLY the next {$cycleDays} days. Pace the content to cover all material by the end dates.",
         ]);
 
-        $output = $this->neuron->planner()->createPlan($planData);
+        \Log::info('=== Calling AI planner ===');
+        $plannerOutput = $this->neuron->planner()->createPlan($planData);
+        $output = $this->plannerOutputToArray($plannerOutput);
+        \Log::info('=== AI planner output type ===', [
+            'class' => is_object($plannerOutput) ? get_class($plannerOutput) : gettype($plannerOutput),
+            'has_schedule' => isset($output['schedule']),
+            'schedule_keys' => isset($output['schedule']) ? array_keys($output['schedule']) : [],
+        ]);
 
-        return DB::transaction(function () use ($user, $output, $planData) {
-            // Deactivate any existing active plans
-            $user->studyPlans()->where('status', 'active')->update(['status' => 'archived']);
-
-            $startsOn = Carbon::today();
-            $endsOn = $this->resolvePlanEndDate($planData['exam_dates'] ?? [], $startsOn);
+        return DB::transaction(function () use ($user, $output, $planData, $today) {
+            // Get the old active plan before any changes
+            $oldActivePlan = $user->studyPlans()->where('status', 'active')->first();
+            
+            $startsOn = $today;
+            $endsOn = $this->resolvePlanEndDate($planData['subject_end_dates'] ?? [], $startsOn);
 
             $normalized = $this->normalizeGeneratedPlan((array) $output);
+            \Log::info('=== Normalized schedule snapshot ===', [
+                'monday_sessions' => $normalized['schedule']['Monday']['sessions'] ?? [],
+            ]);
             $normalized['weeks'] = [
                 [
                     'week_start' => $startsOn->toDateString(),
@@ -65,21 +97,43 @@ class StudyPlanService
                 ],
             ];
 
-            return StudyPlan::create([
+            // Create the new plan FIRST
+            $newPlan = StudyPlan::create([
                 'user_id' => $user->id,
-                'title' => 'Updated Study Plan',
+                'title' => "Study Plan",
                 'goal' => $planData['study_goal'] ?? $user->study_goal,
                 'starts_on' => $startsOn,
                 'ends_on' => $endsOn,
                 'target_hours_per_week' => ($planData['daily_study_hours'] ?? $user->daily_study_hours) * 7,
                 'status' => 'active',
-                'preferences' => [
-                    'productivity_peak' => $planData['productivity_peak'] ?? $user->productivity_peak,
-                    'learning_style' => $planData['learning_style'] ?? $user->learning_style,
-                ],
                 'generated_plan' => $normalized,
                 'prevent_rebalance_until' => Carbon::now()->addHours(24), // Prevent AI re-balance for 24 hours
             ]);
+
+            // MIGRATE SESSIONS from old plan to new plan
+            if ($oldActivePlan) {
+                $migratedCount = $user->studySessions()
+                    ->where('study_plan_id', $oldActivePlan->id)
+                    ->update(['study_plan_id' => $newPlan->id]);
+                
+                // Log the migration for debugging
+                \Log::info('Migrated study sessions to new plan', [
+                    'user_id' => $user->id,
+                    'old_plan_id' => $oldActivePlan->id,
+                    'new_plan_id' => $newPlan->id,
+                    'migrated_sessions' => $migratedCount,
+                ]);
+
+                // Preserve completed session status by updating metadata to match new plan
+                $this->preserveCompletedSessions($user, $newPlan, $normalized['schedule']);
+            }
+
+            // NOW archive the old plan (after sessions are safely migrated)
+            if ($oldActivePlan) {
+                $oldActivePlan->update(['status' => 'archived']);
+            }
+
+            return $newPlan;
         });
     }
 
@@ -99,10 +153,23 @@ class StudyPlanService
             $gp = [];
         }
 
-        $startsOn = Carbon::parse($plan->starts_on)->startOfDay();
-        $today = $targetDate ? Carbon::parse($targetDate)->startOfDay() : Carbon::today()->startOfDay();
+        $userTz = $plan->user->timezone ?? config('app.timezone');
+        $startsOn = Carbon::parse($plan->starts_on, $userTz)->startOfDay();
+        $endsOn = Carbon::parse($plan->ends_on, $userTz)->endOfDay();
+        $today = $targetDate ? Carbon::parse($targetDate, $userTz)->startOfDay() : Carbon::today($userTz)->startOfDay();
+
+        // Determine if cycle is complete
+        $isCycleComplete = $today->gt($endsOn);
+        $daysRemaining = max(0, (int) $today->diffInDays($endsOn, false));
+
         $daysSinceStart = $startsOn->diffInDays($today, false);
         $weekIndex = (int) floor($daysSinceStart / 7);
+
+        // Cap weeks to the plan's intended duration (use startOfDay for accurate week count)
+        $maxWeeks = max(1, (int) ceil($startsOn->diffInDays($endsOn->copy()->startOfDay()) / 7));
+        if ($weekIndex >= $maxWeeks) {
+            $weekIndex = $maxWeeks - 1;
+        }
         if ($weekIndex < 0) {
             $weekIndex = 0;
         }
@@ -118,16 +185,20 @@ class StudyPlanService
             ];
         }
 
-        // Generate any missing weeks up to and including the current week
+        // Generate any missing weeks up to and including the current week (within bounds)
+        // ensureWeekExists handles its own DB refresh internally when it writes a new week.
         for ($i = 0; $i <= $weekIndex; $i++) {
+            // Re-read weeks from DB before each check so we see any week written in a
+            // previous iteration (ensureWeekExists saves back to the DB).
             $plan->refresh();
-            $gp = $plan->generated_plan ?? [];
+            $gp    = $plan->generated_plan ?? [];
             $weeks = $gp['weeks'] ?? [];
             $this->ensureWeekExists($plan, $i, $weeks);
         }
 
+        // One final refresh to pick up the last week written inside the loop.
         $plan->refresh();
-        $gp = $plan->generated_plan ?? [];
+        $gp    = $plan->generated_plan ?? [];
         $weeks = $gp['weeks'] ?? [];
         $currentWeek = $weeks[$weekIndex] ?? ['schedule' => []];
 
@@ -135,7 +206,13 @@ class StudyPlanService
         $normalized = $this->normalizeGeneratedPlan(['schedule' => $schedule, 'strategy_summary' => $gp['strategy_summary'] ?? '']);
 
         $planArray = $plan->toArray();
-        $planArray['generated_plan'] = array_merge($gp, ['schedule' => $normalized['schedule']]);
+        $planArray['generated_plan'] = array_merge($gp, [
+            'schedule' => $normalized['schedule'],
+            'is_cycle_complete' => $isCycleComplete,
+            'days_remaining' => $daysRemaining,
+            'current_week' => $weekIndex + 1,
+            'total_weeks' => $maxWeeks,
+        ]);
 
         return $planArray;
     }
@@ -162,20 +239,32 @@ class StudyPlanService
         $allCoveredTopics = $this->extractCoveredTopics($weeks, $weekIndex);
         $completedTopics = $this->getCompletedTopicsFromSessions($user, $plan);
 
+        // Standardized to 30-day (Monthly) cycles
+        $planDuration = 'monthly';
+        $cycleDays = 30;
+
         $output = $this->neuron->planner()->createNextWeekPlan([
             'subjects' => $user->subjects,
-            'exam_dates' => $user->exam_dates,
             'subject_difficulties' => $user->subject_difficulties,
+            'subject_start_dates' => $user->subject_start_dates ?? [],
+            'subject_end_dates' => $user->subject_end_dates ?? [],
             'daily_study_hours' => $user->daily_study_hours,
-            'productivity_peak' => $user->productivity_peak,
-            'learning_style' => $user->learning_style,
             'study_goal' => $user->study_goal,
             'subject_session_durations' => $user->subject_session_durations ?? [],
+            'cycle_days' => $cycleDays,
+            'planning_mode' => 'adaptive_cycle',
+            'cycle_instruction' => "Generate a study schedule for ONLY the next 7 days within a {$cycleDays}-day cycle. Pace content so the student finishes all material by end dates, but only show this week's portion.",
             'week_number' => $weekIndex + 1,
             'week_start_date' => $weekStartDate,
             'previous_week_schedule' => $previousSchedule,
             'all_covered_topics' => $allCoveredTopics,
             'completed_topics' => $completedTopics,
+            'learning_paths' => $user->learningPaths()
+                ->where('status', 'active')
+                ->get()
+                ->mapWithKeys(function ($path) {
+                    return [$path->subject_name => $path->curriculum];
+                })->toArray(),
         ]);
 
         $newWeekSchedule = $this->normalizeGeneratedPlan((array) $output)['schedule'] ?? [];
@@ -197,20 +286,24 @@ class StudyPlanService
      */
     public function rebalancePlan(User $user): StudyPlan
     {
+        // Safety: Ensure all learning path durations are perfectly balanced before optimizing
+        app(\App\Services\LearningPathService::class)->rebalanceDurationsForUser($user);
+
+        $timezone = $user->timezone ?? config('app.timezone');
         $activePlan = $user->studyPlans()->where('status', 'active')->firstOrFail();
 
         // Check if rebalance is prevented
-        if ($activePlan->prevent_rebalance_until && Carbon::now()->lt($activePlan->prevent_rebalance_until)) {
+        if ($activePlan->prevent_rebalance_until && Carbon::now($timezone)->lt(Carbon::parse($activePlan->prevent_rebalance_until, $timezone))) {
             throw new \Exception('Plan rebalance is temporarily prevented to allow the new schedule to settle. Please try again later.');
         }
 
         // Gather performance data
         $recentSessions = $user->studySessions()
-            ->where('started_at', '>=', Carbon::now()->subDays(7))
+            ->where('started_at', '>=', Carbon::now($timezone)->subDays(7))
             ->get();
         
         $recentQuizzes = $user->quizResults()
-            ->where('taken_at', '>=', Carbon::now()->subDays(7))
+            ->where('taken_at', '>=', Carbon::now($timezone)->subDays(7))
             ->get();
 
         // 1. Analyze performance
@@ -243,24 +336,32 @@ class StudyPlanService
         $optimizationData = [
             'current_plan' => $activePlan->generated_plan,
             'analysis_insights' => (array)$analysis,
-            'current_day' => Carbon::today()->format('l'),
-            'current_date' => Carbon::today()->toDateString(),
+            'current_day' => Carbon::today($timezone)->format('l'),
+            'current_date' => Carbon::today($timezone)->toDateString(),
             'user_subjects' => $user->subjects,
-            'user_exam_dates' => $user->exam_dates,
+            'subject_start_dates' => $user->subject_start_dates ?? [],
+            'subject_end_dates' => $user->subject_end_dates ?? [],
             'user_difficulties' => $user->subject_difficulties,
             'daily_study_hours' => $user->daily_study_hours,
-            'productivity_peak' => $user->productivity_peak,
-            'learning_style' => $user->learning_style,
+            'study_goal' => $user->study_goal,
+            'subject_session_durations' => $user->subject_session_durations ?? [],
             'has_performance_data' => $hasPerformanceData,
+            'learning_paths' => $user->learningPaths()
+                ->where('status', 'active')
+                ->get()
+                ->mapWithKeys(function ($path) {
+                    return [$path->subject_name => $path->curriculum];
+                })->toArray(),
         ];
         
         $optimization = $this->neuron->optimizer()->optimize($optimizationData);
 
         // 3. Persist new plan (with weeks structure for weekly rollover)
-        return DB::transaction(function () use ($user, $activePlan, $optimization) {
-            $activePlan->update(['status' => 'archived']);
+        return DB::transaction(function () use ($user, $activePlan, $optimization, $timezone) {
+            // Store the old plan ID before any changes
+            $oldPlanId = $activePlan->id;
 
-            $startsOn = Carbon::today();
+            $startsOn = Carbon::today($timezone);
             $normalized = $this->normalizeGeneratedPlan([
                 'schedule' => $optimization->optimized_schedule,
                 'strategy_summary' => $optimization->predicted_improvement,
@@ -270,7 +371,8 @@ class StudyPlanService
                 ['week_start' => $startsOn->toDateString(), 'schedule' => $normalized['schedule']],
             ];
 
-            return StudyPlan::create([
+            // Create the new plan FIRST
+            $newPlan = StudyPlan::create([
                 'user_id' => $user->id,
                 'title' => 'Optimized Recovery Plan',
                 'goal' => $activePlan->goal,
@@ -278,28 +380,51 @@ class StudyPlanService
                 'ends_on' => $activePlan->ends_on,
                 'target_hours_per_week' => $activePlan->target_hours_per_week,
                 'status' => 'active',
-                'preferences' => $activePlan->preferences,
                 'generated_plan' => $normalized,
-                'prevent_rebalance_until' => Carbon::now()->addHours(12), // Prevent AI re-balance for 12 hours
+                'prevent_rebalance_until' => Carbon::now($timezone)->addHours(12), // Prevent AI re-balance for 12 hours
             ]);
+
+            // MIGRATE SESSIONS from old plan to new plan
+            $migratedCount = $user->studySessions()
+                ->where('study_plan_id', $oldPlanId)
+                ->update(['study_plan_id' => $newPlan->id]);
+            
+            // Log the migration for debugging
+            \Log::info('Migrated study sessions during rebalance', [
+                'user_id' => $user->id,
+                'old_plan_id' => $oldPlanId,
+                'new_plan_id' => $newPlan->id,
+                'migrated_sessions' => $migratedCount,
+            ]);
+
+            // Preserve completed session status by updating metadata to match new plan
+            $this->preserveCompletedSessions($user, $newPlan, $normalized['schedule']);
+
+            // NOW archive the old plan (after sessions are safely migrated)
+            $activePlan->update(['status' => 'archived']);
+
+            return $newPlan;
         });
     }
 
     /**
-     * Resolve plan end date from exam dates, or default to 4 weeks from start.
+     * Resolve plan end date based on the farthest subject end date.
+     * Falls back to 30 days if no end dates are provided.
      */
-    protected function resolvePlanEndDate(?array $examDates, Carbon $startsOn): Carbon
+    protected function resolvePlanEndDate(?array $endDates, Carbon $startsOn): Carbon
     {
-        $dates = collect($examDates ?? [])
-            ->filter(fn ($d) => $d !== null && $d !== '')
-            ->map(fn ($d) => Carbon::parse($d));
+        if (!empty($endDates)) {
+            $farthest = collect($endDates)
+                ->filter()
+                ->map(fn ($d) => Carbon::parse($d))
+                ->max();
 
-        if ($dates->isEmpty()) {
-            return $startsOn->copy()->addWeeks(4);
+            if ($farthest && $farthest->gt($startsOn)) {
+                return $farthest;
+            }
         }
 
-        $max = $dates->max();
-        return $max->isBefore($startsOn) ? $startsOn->copy()->addWeeks(4) : $max;
+        return $startsOn->copy()->addDays(29); // Fallback: 30 days
     }
 
     /**
@@ -441,10 +566,10 @@ class StudyPlanService
                 $duration = $this->parseDuration($s['duration_minutes'] ?? $s['duration'] ?? null);
                 
                 // Validate and cap session duration
-                if ($duration > 90) {
-                    $duration = 90; // Cap at maximum 90 minutes
-                } elseif ($duration < 25) {
-                    $duration = 30; // Minimum 30 minutes (default for very short sessions)
+                if ($duration > 240) {
+                    $duration = 240; // Cap at maximum 240 minutes (4 hours)
+                } elseif ($duration < 15) {
+                    $duration = 15; // Minimum 15 minutes
                 }
                 
                 $out[] = [
@@ -567,11 +692,19 @@ class StudyPlanService
 
     protected function defaultKeyTopics(string $subject, string $topic): array
     {
+        $topics = SubjectCurriculumTemplates::getTopicsForSubject($subject);
+        // Pick 3 beginner topics as key_topics fallback (they're subject-specific)
+        $beginnerTopics = $topics['beginner'] ?? [];
+
+        if (!empty($beginnerTopics)) {
+            return array_slice($beginnerTopics, 0, 3);
+        }
+
         $base = trim($topic) !== '' ? $topic : $subject;
         return [
             $base.' overview',
-            'Core concepts and definitions',
-            'Practice exercises and review',
+            "{$subject} core principles",
+            "{$subject} practice exercises",
         ];
     }
 
@@ -708,33 +841,65 @@ class StudyPlanService
     }
 
     /**
-     * Sanitize a resource URL - ensure it's valid, but don't redirect to search.
-     * Returns the URL as-is if valid, or converts to YouTube search if invalid.
+     * Sanitize a resource URL.
+     * - YouTube videos must be converted to search URLs.
+     * - Documentation/resources must point to trusted official domains only.
+     * - If the URL cannot be verified, return an empty string so fallback resources are used.
      */
     protected function sanitizeResourceUrl(string $url, string $title, string $type): string
     {
         $url = trim($url);
 
-        // AI sometimes generates "site:domain.com Title text" as the URL
-        // Extract just the domain from site: patterns
+        // Handle "site:domain.com" hints from AI
         if (str_contains($url, 'site:')) {
-            // Pattern: "site:domain.com" or "site:domain.com Title"
             if (preg_match('/site:([^\s]+)/', $url, $matches)) {
                 $domain = $matches[1];
-                // Ensure https:// prefix
-                if (!str_starts_with($domain, 'http')) {
-                    return 'https://' . $domain;
+                if (! str_starts_with($domain, 'http')) {
+                    $domain = 'https://' . $domain;
                 }
-                return $domain;
+                $url = $domain;
             }
         }
 
-        // Not a valid URL at all — convert title to YouTube search
+        // Ensure we have a valid URL structure
         if (! filter_var($url, FILTER_VALIDATE_URL)) {
-            return 'https://www.youtube.com/results?search_query=' . rawurlencode($title . ' tutorial');
+            return '';
         }
 
-        // Valid URL — return as-is (user goes directly to the page)
+        $parsed = parse_url($url);
+        $host = $parsed['host'] ?? '';
+
+        // Convert direct YouTube links to search URLs (always allowed)
+        if (str_contains($host, 'youtube.com') || str_contains($host, 'youtu.be')) {
+            return 'https://www.youtube.com/results?search_query=' . rawurlencode($title . ' ' . $type . ' tutorial');
+        }
+
+        // Trusted documentation/content domains list (official docs + well-known platforms)
+        $trustedDomains = [
+            'react.dev', 'reactjs.org', 'vuejs.org', 'angular.io', 'svelte.dev',
+            'developer.mozilla.org', 'nextjs.org', 'nuxt.com', 'python.org', 'docs.python.org',
+            'pytorch.org', 'tensorflow.org', 'laravel.com', 'symfony.com', 'rubyonrails.org',
+            'nodejs.org', 'deno.land', 'go.dev', 'kotlinlang.org', 'swift.org',
+            'docs.oracle.com', 'kubernetes.io', 'docker.com', 'developer.apple.com',
+            'microsoft.com', 'learn.microsoft.com', 'cloud.google.com', 'aws.amazon.com',
+            'docs.github.com', 'git-scm.com', 'gnu.org', 'rust-lang.org', 'elixir-lang.org',
+            'php.net', 'docs.djangoproject.com', 'flask.palletsprojects.com', 'fastapi.tiangolo.com',
+            'matplotlib.org', 'scipy.org', 'numpy.org', 'pandas.pydata.org',
+            'mathworks.com', 'wolframalpha.com', 'khanacademy.org', 'coursera.org', 'edx.org',
+            'mit.edu', 'stanford.edu', 'harvard.edu', 'cmu.edu',
+            'geeksforgeeks.org', 'wikipedia.org', 'docs.aws.amazon.com', 'docs.microsoft.com',
+        ];
+
+        $hostWithoutWww = preg_replace('/^www\./', '', $host);
+        $isTrusted = collect($trustedDomains)->contains(function ($domain) use ($hostWithoutWww) {
+            return $hostWithoutWww === $domain || str_ends_with($hostWithoutWww, '.' . $domain);
+        });
+
+        if (! $isTrusted && $type === 'article') {
+            // If the host isn't trusted for documentation, drop it so fallback resources are used
+            return '';
+        }
+
         return $url;
     }
 
@@ -828,5 +993,282 @@ class StudyPlanService
         }
 
         return $completed;
+    }
+
+    /**
+     * Get subjects whose end dates have passed (completed subjects).
+     */
+    public function getCompletedSubjects(User $user): array
+    {
+        $endDates = $user->subject_end_dates ?? [];
+        $today = now();
+        $completedSubjects = [];
+
+        foreach ($endDates as $subject => $endDate) {
+            if ($endDate) {
+                $end = Carbon::parse($endDate);
+                if ($end->lt($today)) {
+                    $completedSubjects[] = $subject;
+                }
+            }
+        }
+
+        return $completedSubjects;
+    }
+
+
+    /**
+     * Update completed session metadata to match new plan structure
+     * This ensures completed sessions remain visible when plans are regenerated with different topics
+     */
+    public function preserveCompletedSessions(User $user, StudyPlan $newPlan, array $newSchedule): void
+    {
+        $completedSessions = $user->studySessions()
+            ->where('status', 'completed')
+            ->where('study_plan_id', $newPlan->id)
+            ->get();
+
+        foreach ($completedSessions as $session) {
+            $sessionDate = Carbon::parse($session->started_at)->format('Y-m-d');
+            $dayName = Carbon::parse($session->started_at)->format('l');
+            
+            // Find matching session in new schedule
+            $matchingSession = $this->findMatchingSessionInSchedule(
+                $session->meta->subject_name ?? '',
+                $session->meta->topic_name ?? '',
+                $sessionDate,
+                $dayName,
+                $newSchedule
+            );
+
+            if ($matchingSession) {
+                // Update session metadata to match new plan's session structure
+                $session->update([
+                    'meta' => array_merge($session->meta ?? [], [
+                        'subject_name' => $matchingSession['subject'],
+                        'topic_name' => $matchingSession['topic'],
+                        'original_subject' => $session->meta->subject_name ?? '',
+                        'original_topic' => $session->meta->topic_name ?? '',
+                        'preserved_from_plan_change' => true,
+                    ])
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Find a matching session in the new schedule based on subject and date
+     */
+    private function findMatchingSessionInSchedule(string $subject, string $topic, string $date, string $dayName, array $schedule): ?array
+    {
+        // Normalize for comparison
+        $normalizeSubject = strtolower(trim(preg_replace('/[^a-z0-9\s]/', '', $subject)));
+        $normalizeTopic = strtolower(trim(preg_replace('/[^a-z0-9\s]/', '', $topic)));
+
+        // Check multiple possible schedule structures
+        $daySchedule = null;
+        
+        // Try date-based first (YYYY-MM-DD format)
+        if (isset($schedule[$date])) {
+            $daySchedule = $schedule[$date];
+        }
+        // Try day name-based (Monday, Tuesday, etc.)
+        elseif (isset($schedule[$dayName])) {
+            $daySchedule = $schedule[$dayName];
+        }
+        // Try nested structure (schedule.weeks[].schedule)
+        else {
+            foreach ($schedule as $key => $value) {
+                if ($key === 'weeks' && is_array($value)) {
+                    foreach ($value as $week) {
+                        if (isset($week['schedule'][$date])) {
+                            $daySchedule = $week['schedule'][$date];
+                            break 2;
+                        } elseif (isset($week['schedule'][$dayName])) {
+                            $daySchedule = $week['schedule'][$dayName];
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (!$daySchedule || !isset($daySchedule['sessions'])) {
+            return null;
+        }
+
+        foreach ($daySchedule['sessions'] as $session) {
+            $sessionSubject = strtolower(trim(preg_replace('/[^a-z0-9\s]/', '', $session['subject'] ?? '')));
+            $sessionTopic = strtolower(trim(preg_replace('/[^a-z0-9\s]/', '', $session['topic'] ?? '')));
+
+            // Match subjects (allowing for variations)
+            $subjectMatches = $sessionSubject === $normalizeSubject || 
+                             str_contains($sessionSubject, $normalizeSubject) || 
+                             str_contains($normalizeSubject, $sessionSubject);
+
+            if (!$subjectMatches) continue;
+
+            // Match topics (allowing for variations)
+            $topicMatches = $sessionTopic === $normalizeTopic || 
+                           str_contains($sessionTopic, $normalizeTopic) || 
+                           str_contains($normalizeTopic, $sessionTopic) ||
+                           $sessionTopic === 'study session' ||
+                           $normalizeTopic === 'study session';
+
+            // Enhanced semantic matching for tech topics
+            $semanticMatch = false;
+            if (!$topicMatches && $subjectMatches) {
+                $techTerms = ['hook', 'state', 'effect', 'component', 'context', 'reducer'];
+                foreach ($techTerms as $term) {
+                    if (str_contains($sessionTopic, $term) && str_contains($normalizeTopic, $term)) {
+                        $semanticMatch = true;
+                        break;
+                    }
+                }
+            }
+
+            // Fallback for generic topics or very short topics
+            $fallbackMatch = $subjectMatches && (
+                $sessionTopic === 'study session' ||
+                $normalizeTopic === 'study session' ||
+                strlen($sessionTopic) < 3 ||
+                strlen($normalizeTopic) < 3
+            );
+
+            if ($topicMatches || $semanticMatch || $fallbackMatch) {
+                return $session;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Convert PlannerOutput (structured object) to an array for storage/logging.
+     */
+    protected function plannerOutputToArray(mixed $output): array
+    {
+        if ($output instanceof PlannerOutput) {
+            return [
+                'schedule' => $output->schedule ?? [],
+                'strategy_summary' => $output->strategy_summary ?? '',
+            ];
+        }
+
+        if (is_array($output)) {
+            return $output;
+        }
+
+    }
+
+    /**
+     * Completely remove a subject from a user's world: Profile, LearningPaths, and StudyPlans.
+     * 
+     * @param bool $deepPurge If true, also deletes all historical StudySession records for this subject.
+     */
+    public function purgeSubject(User $user, string $subject, bool $deepPurge = false): void
+    {
+        $subject = trim($subject);
+        $subjectLower = mb_strtolower($subject);
+
+        // 1. Remove from User metadata
+        $subjects = $user->subjects ?? [];
+        $newSubjects = array_values(array_filter($subjects, fn($s) => mb_strtolower(trim($s)) !== $subjectLower));
+        
+        $diffs = $user->subject_difficulties ?? [];
+        $starts = $user->subject_start_dates ?? [];
+        $ends = $user->subject_end_dates ?? [];
+        $durs = $user->subject_session_durations ?? [];
+
+        // Case-insensitive removal for metadata maps
+        $cleanupMap = function($map) use ($subjectLower) {
+            if (!is_array($map)) return [];
+            foreach ($map as $key => $val) {
+                if (mb_strtolower(trim($key)) === $subjectLower) {
+                    unset($map[$key]);
+                }
+            }
+            return $map;
+        };
+
+        $user->update([
+            'subjects' => $newSubjects,
+            'subject_difficulties' => $cleanupMap($diffs),
+            'subject_start_dates' => $cleanupMap($starts),
+            'subject_end_dates' => $cleanupMap($ends),
+            'subject_session_durations' => $cleanupMap($durs),
+        ]);
+
+        // 2. Handle LearningPaths and optional Deep Purge of Sessions
+        $pathsQuery = $user->learningPaths()
+            ->whereRaw('LOWER(subject_name) = ?', [$subjectLower]);
+        
+        if ($deepPurge) {
+            $pathIds = $pathsQuery->pluck('id')->toArray();
+            if (!empty($pathIds)) {
+                // Delete all sessions linked to these historical paths
+                $user->studySessions()
+                    ->whereIn('learning_path_id', $pathIds)
+                    ->delete();
+                
+                // Also attempt to find sessions matching subject in meta (fallback for old data)
+                // This is less efficient but ensures parity if learning_path_id was null
+                $user->studySessions()
+                    ->whereNull('learning_path_id')
+                    ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.subject'))) = ?", [$subjectLower])
+                    ->delete();
+            }
+        }
+
+        // Delete ALL learning paths for this subject (active or completed)
+        $pathsQuery->delete();
+
+        // 3. Scrub from all active/archived StudyPlans (JSON generated_plan)
+        $plans = $user->studyPlans()->whereIn('status', ['active', 'archived'])->get();
+        foreach ($plans as $plan) {
+            $this->removeSubjectFromPlan($plan, $subject);
+        }
+
+        \Log::info("Purged subject '{$subject}' for user {$user->id}" . ($deepPurge ? " (including history)" : ""));
+    }
+
+    /**
+     * Remove all sessions for a specific subject from a StudyPlan's JSON schedule.
+     */
+    public function removeSubjectFromPlan(StudyPlan $plan, string $subject): void
+    {
+        $gp = $plan->generated_plan;
+        if (!is_array($gp)) return;
+
+        $subjectLower = mb_strtolower(trim($subject));
+
+        // Helper to filter sessions from a schedule array
+        $filterSessions = function($schedule) use ($subjectLower) {
+            if (!is_array($schedule)) return $schedule;
+            foreach ($schedule as $day => $data) {
+                if (isset($data['sessions']) && is_array($data['sessions'])) {
+                    $schedule[$day]['sessions'] = array_values(array_filter($data['sessions'], function($s) use ($subjectLower) {
+                        return mb_strtolower(trim($s['subject'] ?? '')) !== $subjectLower;
+                    }));
+                }
+            }
+            return $schedule;
+        };
+
+        // Scrub main schedule
+        if (isset($gp['schedule'])) {
+            $gp['schedule'] = $filterSessions($gp['schedule']);
+        }
+
+        // Scrub weeks array
+        if (isset($gp['weeks']) && is_array($gp['weeks'])) {
+            foreach ($gp['weeks'] as $idx => $week) {
+                if (isset($week['schedule'])) {
+                    $gp['weeks'][$idx]['schedule'] = $filterSessions($week['schedule']);
+                }
+            }
+        }
+
+        $plan->update(['generated_plan' => $gp]);
     }
 }

@@ -28,12 +28,14 @@ class ProgressController extends Controller
                 'subject' => $r->meta['subject'] ?? '',
                 'topic' => $r->meta['topic'] ?? '',
                 'percentage' => (float) $r->percentage,
-                'passed' => $r->percentage >= 80,
+                'passed' => $r->percentage >= 70,
                 'correct_count' => $r->correct_count,
                 'incorrect_count' => $r->incorrect_count,
                 'skipped_count' => $r->skipped_count,
                 'total_questions' => $r->max_score,
                 'taken_at' => $r->taken_at?->toISOString(),
+                // Add review data
+                'review' => $this->buildReviewData($r),
             ]);
 
         $totalQuizzes = $quizHistory->count();
@@ -95,5 +97,29 @@ class ProgressController extends Controller
             'quizStats' => $quizStats,
             'quizTrends' => $quizTrends,
         ]);
+    }
+
+    /**
+     * Build review data for a quiz result
+     */
+    private function buildReviewData(QuizResult $result): array
+    {
+        $quiz = $result->quiz;
+        $questions = $quiz?->questions ?? [];
+
+        // If no questions data available, return empty array
+        if (empty($questions)) {
+            return [];
+        }
+
+        return array_map(fn ($q, $i) => [
+            'question' => $q['question'] ?? '',
+            'options' => $q['options'] ?? [],
+            'correct_answer' => $q['correct_answer'] ?? '',
+            'explanation' => $q['explanation'] ?? '',
+            'user_answer' => $result->answers[$i]['user_answer'] ?? null,
+            'is_correct' => $result->answers[$i]['is_correct'] ?? false,
+            'skipped' => $result->answers[$i]['skipped'] ?? false,
+        ], $questions, array_keys($questions));
     }
 }

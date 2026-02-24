@@ -1,4 +1,6 @@
+import { CheckCircle2, XCircle, Loader2, RotateCcw, Trophy, AlertTriangle, BookOpen } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
+import { Button } from '@/components/ui/button';
 import {
     Dialog,
     DialogContent,
@@ -7,9 +9,7 @@ import {
     DialogDescription,
     DialogFooter,
 } from '@/components/ui/dialog';
-import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { CheckCircle2, XCircle, Loader2, RotateCcw, Trophy, AlertTriangle, BookOpen } from 'lucide-react';
 
 interface QuizOption {
     label: string;

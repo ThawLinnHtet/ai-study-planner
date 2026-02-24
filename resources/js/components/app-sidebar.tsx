@@ -1,15 +1,12 @@
 import { Link } from '@inertiajs/react';
 import {
-    BookOpen,
-    CalendarClock,
     Folder,
     LayoutGrid,
     LineChart,
-    Settings,
+    CalendarClock,
 } from 'lucide-react';
 import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
-import { NavUser } from '@/components/nav-user';
 import {
     Sidebar,
     SidebarContent,
@@ -19,9 +16,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { useCurrentUrl } from '@/hooks/use-current-url';
 import { dashboard, progress, studyPlanner } from '@/routes';
-import { overview as settingsOverview } from '@/routes/settings';
 import type { NavItem } from '@/types';
 import AppLogo from './app-logo';
 
@@ -34,13 +29,11 @@ const footerNavItems: NavItem[] = [
     {
         title: 'Documentation',
         href: 'https://laravel.com/docs/starter-kits#react',
-        icon: BookOpen,
+        icon: Folder,
     },
 ];
 
 export function AppSidebar() {
-    const { currentUrl } = useCurrentUrl();
-
     const mainNavItems: NavItem[] = [
         {
             title: 'Dashboard',
@@ -56,12 +49,6 @@ export function AppSidebar() {
             title: 'Progress',
             href: progress(),
             icon: LineChart,
-        },
-        {
-            title: 'Settings',
-            href: settingsOverview(),
-            icon: Settings,
-            isActive: currentUrl.startsWith('/settings'),
         },
     ];
 
@@ -85,7 +72,6 @@ export function AppSidebar() {
 
             <SidebarFooter>
                 <NavFooter items={footerNavItems} className="mt-auto" />
-                <NavUser />
             </SidebarFooter>
         </Sidebar>
     );

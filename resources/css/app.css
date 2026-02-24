@@ -92,6 +92,9 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    --font-sans: "Manrope", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
@@ -105,6 +108,8 @@
 
     body {
         @apply bg-background text-foreground;
+        font-size: 1rem;
+        line-height: 1.5;
     }
 }
 
@@ -280,10 +285,84 @@
     transform: perspective(1000px) rotateY(5deg) rotateX(2deg) scale(1.02);
 }
 
+/* Shimmer effect for progress bars */
+@keyframes shimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+
+    100% {
+        transform: translateX(100%);
+    }
+}
+
+.shimmer-wrapper {
+    position: relative;
+    overflow: hidden;
+}
+
+.shimmer-active::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    background: linear-gradient(90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.2) 50%,
+            transparent 100%);
+    animation: shimmer 2s infinite;
+}
+
+/* Glow effects for cards */
+.glow-primary:hover {
+    box-shadow: 0 0 20px rgba(var(--primary-rgb), 0.15);
+}
+
+.glow-amber:hover {
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.15);
+}
+
+.glow-emerald:hover {
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+.glow-indigo:hover {
+    box-shadow: 0 0 20px rgba(79, 70, 229, 0.15);
+}
+
+/* Tactile button press */
+.active-press:active {
+    transform: scale(0.98);
+}
+
+/* Smooth strike-through */
+.strikethrough-animate {
+    position: relative;
+    display: inline-block;
+}
+
+.strikethrough-animate::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 0;
+    height: 1.5px;
+    background: currentColor;
+    transition: width 0.3s ease;
+}
+
+.is-done .strikethrough-animate::after {
+    width: 100%;
+}
+
 /* Performance optimizations */
 .animate-fade-in,
 .animate-fade-in-up,
-.slide-in-left {
+.slide-in-left,
+.shimmer-active::after {
     will-change: opacity, transform;
 }
 

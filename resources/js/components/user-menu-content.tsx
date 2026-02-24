@@ -1,5 +1,5 @@
 import { Link, router } from '@inertiajs/react';
-import { LogOut, Settings } from 'lucide-react';
+import { LogOut, Settings, User as UserIcon, Lock, Shield, Palette } from 'lucide-react';
 import {
     DropdownMenuGroup,
     DropdownMenuItem,
@@ -10,6 +10,9 @@ import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { logout } from '@/routes';
 import { edit } from '@/routes/profile';
+import { edit as editPassword } from '@/routes/user-password';
+import { edit as editAppearance } from '@/routes/appearance';
+
 import type { User } from '@/types';
 
 type Props = {
@@ -40,8 +43,42 @@ export function UserMenuContent({ user }: Props) {
                         prefetch
                         onClick={cleanup}
                     >
+                        <UserIcon className="mr-2" />
+                        Profile
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="block w-full cursor-pointer"
+                        href="/settings/onboarding"
+                        prefetch
+                        onClick={cleanup}
+                    >
                         <Settings className="mr-2" />
-                        Settings
+                        Study Preferences
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="block w-full cursor-pointer"
+                        href={editPassword()}
+                        prefetch
+                        onClick={cleanup}
+                    >
+                        <Lock className="mr-2" />
+                        Password
+                    </Link>
+                </DropdownMenuItem>
+
+                <DropdownMenuItem asChild>
+                    <Link
+                        className="block w-full cursor-pointer"
+                        href={editAppearance()}
+                        prefetch
+                        onClick={cleanup}
+                    >
+                        <Palette className="mr-2" />
+                        Appearance
                     </Link>
                 </DropdownMenuItem>
             </DropdownMenuGroup>

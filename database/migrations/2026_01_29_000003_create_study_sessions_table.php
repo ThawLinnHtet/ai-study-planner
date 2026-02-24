@@ -23,13 +23,14 @@ return new class extends Migration
                 ->constrained('study_plans')
                 ->nullOnDelete();
 
-            $table->foreignId('subject_id')
+            $table->foreignId('learning_path_id')
                 ->nullable()
-                ->constrained('subjects')
+                ->constrained('learning_paths')
                 ->nullOnDelete();
+                
+            $table->unsignedInteger('day_number')->nullable();
 
             $table->timestamp('started_at')->index();
-            $table->timestamp('ended_at')->nullable()->index();
 
             $table->unsignedInteger('duration_minutes')->nullable();
 
@@ -44,7 +45,6 @@ return new class extends Migration
 
             $table->index(['user_id', 'started_at']);
             $table->index(['study_plan_id', 'started_at']);
-            $table->index(['subject_id', 'started_at']);
         });
     }
 

@@ -55,14 +55,43 @@ class OptimizerAgent extends Agent
         $newAvailability = json_encode($data['new_availability'] ?? null);
         $currentDay = $data['current_day'] ?? date('l');
         $currentDate = $data['current_date'] ?? date('Y-m-d');
+        $goal = $data['study_goal'] ?? 'General Study Improvement';
+        $difficulties = json_encode($data['user_difficulties'] ?? []);
+        $sessionDurations = json_encode($data['subject_session_durations'] ?? []);
+        $learningPaths = json_encode($data['learning_paths'] ?? []);
+        $startDatesRaw = $data['subject_start_dates'] ?? [];
+        $endDatesRaw = $data['subject_end_dates'] ?? [];
+
+        // Build per-subject summary for dates
+        $subjectSummaryLines = [];
+        $subjects = $data['user_subjects'] ?? [];
+        foreach ($subjects as $subject) {
+            $start = $startDatesRaw[$subject] ?? $currentDate;
+            $end = $endDatesRaw[$subject] ?? date('Y-m-d', strtotime('+30 days'));
+            $subjectSummaryLines[] = "  - {$subject}: {$start} → {$end}";
+        }
+        $subjectSummary = implode("\n", $subjectSummaryLines);
 
         $prompt = <<<PROMPT
 Optimize this study plan starting from today ({$currentDay}, {$currentDate}):
 - Current Plan: {$currentPlan}
 - Performance Insights: {$insights}
+- Primary Study Goal: {$goal}
+- Subject Difficulties (1=Easy, 3=Hard): {$difficulties}
+- Custom Session Duration Preferences: {$sessionDurations}
 - New Availability Constraints: {$newAvailability}
 
-IMPORTANT: The new optimized schedule must begin with tasks for today ({$currentDay}).
+SPECIFIC LEARNING PATH CURRICULA (Day-by-Day Topics):
+{$learningPaths}
+
+SUBJECT DATE RANGES:
+{$subjectSummary}
+
+IMPORTANT:
+1. The new optimized schedule must begin with tasks for today ({$currentDay}).
+2. Respect the user's Primary Study Goal (e.g., if it's "foundation", prioritize basic concepts).
+3. Every session MUST match the EXACT `duration_minutes` specified in the subject's Learning Path curriculum for that specific day. DO NOT invent or round durations.
+4. ONLY schedule subjects within their specific [start_date, end_date] range as shown above.
 PROMPT;
 
         return $this->structured(new UserMessage($prompt));

@@ -70,6 +70,18 @@ export function SimpleAutocomplete({
                     onSelect(filteredSuggestions[highlightedIndex]);
                     setIsOpen(false);
                     onValueChange('');
+                } else {
+                    // Try to add custom
+                    const trimmed = value.trim();
+                    const isDuplicate = selectedSubjects.includes(trimmed);
+                    const isTooShort = trimmed.length < 3;
+                    const isJunk = !/[a-zA-Z0-9]/.test(trimmed);
+
+                    if (trimmed && !isDuplicate && !isTooShort && !isJunk) {
+                        handleCustomSubmit();
+                        setIsOpen(false);
+                        onValueChange('');
+                    }
                 }
                 break;
             case 'Escape':
@@ -184,7 +196,7 @@ export function SimpleAutocomplete({
                                     'cursor-pointer px-3 py-2 text-sm',
                                     'hover:bg-accent hover:text-accent-foreground',
                                     actualIndex === highlightedIndex &&
-                                        'bg-accent text-accent-foreground',
+                                    'bg-accent text-accent-foreground',
                                     isSelected && 'opacity-60'
                                 )}
                                 onClick={(e) => {
@@ -206,47 +218,75 @@ export function SimpleAutocomplete({
                         );
                     })}
 
-                    {value.trim() &&
-                        !filteredSuggestions.includes(value.trim()) &&
-                        !selectedSubjects.includes(value.trim()) && (
+                    {(() => {
+                        const trimmedValue = value.trim();
+                        if (!trimmedValue) return null;
+
+                        const isDuplicate = selectedSubjects.includes(trimmedValue);
+                        const isTooShort = trimmedValue.length < 3;
+                        const isJunk = !/[a-zA-Z0-9]/.test(trimmedValue);
+                        const isPredefined = filteredSuggestions.includes(trimmedValue);
+
+                        if (isPredefined) return null;
+
+                        return (
                             <li
                                 className={cn(
-                                    'cursor-pointer border-t border-border px-3 py-2 text-sm',
-                                    'hover:bg-emerald-50 dark:hover:bg-emerald-900/20',
-                                    highlightedIndex ===
-                                        (filteredSuggestions.length +
-                                            (selectedSubjects.length > 0
-                                                ? selectedSubjects.length + 1
-                                                : 0)) &&
-                                        'bg-emerald-50 text-emerald-900 dark:bg-emerald-900/30 dark:text-emerald-100'
+                                    'cursor-pointer border-t border-border px-3 py-2 text-sm transition-colors',
+                                    (isDuplicate || isTooShort || isJunk)
+                                        ? 'bg-muted/30 cursor-not-allowed opacity-80'
+                                        : 'hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
                                 )}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
-                                    handleCustomSubmit();
+                                    if (!isDuplicate && !isTooShort && !isJunk) {
+                                        handleCustomSubmit();
+                                    }
                                 }}
-                                onMouseEnter={() =>
-                                    setHighlightedIndex(
-                                        filteredSuggestions.length +
-                                            (selectedSubjects.length > 0
-                                                ? selectedSubjects.length + 1
-                                                : 0)
-                                    )
-                                }
                             >
                                 <div className="flex items-center justify-between">
                                     <span className="flex items-center gap-2">
-                                        <span className="text-emerald-600 dark:text-emerald-300">
+                                        <span className={cn(
+                                            "flex size-4 items-center justify-center rounded-full text-[10px] font-bold",
+                                            (isDuplicate || isTooShort || isJunk)
+                                                ? "bg-muted text-muted-foreground"
+                                                : "bg-emerald-500 text-white"
+                                        )}>
                                             +
                                         </span>
-                                        <span>Add "{value.trim()}"</span>
+                                        <span className={cn(
+                                            "truncate max-w-[180px]",
+                                            (isDuplicate || isTooShort || isJunk) && "text-muted-foreground"
+                                        )}>
+                                            Add "{trimmedValue}"
+                                        </span>
                                     </span>
-                                    <span className="text-xs font-medium text-emerald-500 dark:text-emerald-300">
-                                        New
-                                    </span>
+
+                                    {isDuplicate && (
+                                        <span className="text-[10px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">
+                                            Already added
+                                        </span>
+                                    )}
+                                    {isTooShort && !isDuplicate && (
+                                        <span className="text-[10px] font-medium text-muted-foreground">
+                                            {trimmedValue.length}/3 chars
+                                        </span>
+                                    )}
+                                    {isJunk && !isTooShort && !isDuplicate && (
+                                        <span className="text-[10px] font-medium text-destructive">
+                                            Invalid name
+                                        </span>
+                                    )}
+                                    {!isDuplicate && !isTooShort && !isJunk && (
+                                        <span className="text-[10px] font-medium text-emerald-500">
+                                            New
+                                        </span>
+                                    )}
                                 </div>
                             </li>
-                        )}
+                        );
+                    })()}
 
                     {selectedSubjects.length > 0 && onClearAll && (
                         <li

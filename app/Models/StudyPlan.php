@@ -13,14 +13,12 @@ class StudyPlan extends Model
 
     protected $fillable = [
         'user_id',
-        'subject_id',
         'title',
         'goal',
         'starts_on',
         'ends_on',
         'target_hours_per_week',
         'status',
-        'preferences',
         'generated_plan',
         'prevent_rebalance_until',
     ];
@@ -30,7 +28,6 @@ class StudyPlan extends Model
         return [
             'starts_on' => 'date',
             'ends_on' => 'date',
-            'preferences' => 'array',
             'generated_plan' => 'array',
             'prevent_rebalance_until' => 'datetime',
         ];
@@ -39,11 +36,6 @@ class StudyPlan extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function subject(): BelongsTo
-    {
-        return $this->belongsTo(Subject::class);
     }
 
     public function studySessions(): HasMany

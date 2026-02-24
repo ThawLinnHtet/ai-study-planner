@@ -22,6 +22,11 @@ class EnsureOnboarded
         }
 
         if ($user->onboarding_completed) {
+            // Force user to dashboard loading screen if generation is in progress
+            if ($user->is_generating_plan && ! $request->is('dashboard')) {
+                return redirect()->route('dashboard');
+            }
+
             if ($request->is('onboarding') || $request->is('onboarding/*')) {
                 return redirect()->route('dashboard');
             }

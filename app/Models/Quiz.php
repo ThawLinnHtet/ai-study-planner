@@ -13,7 +13,6 @@ class Quiz extends Model
 
     protected $fillable = [
         'user_id',
-        'subject_id',
         'study_plan_id',
         'title',
         'description',
@@ -34,11 +33,6 @@ class Quiz extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
-    }
-
-    public function subject(): BelongsTo
-    {
-        return $this->belongsTo(Subject::class);
     }
 
     public function studyPlan(): BelongsTo

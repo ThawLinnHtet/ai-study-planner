@@ -1,11 +1,24 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, BookOpen, CheckCircle2, ChevronRight, RotateCcw, XCircle, Sparkles, Target, Timer, Lock, Clock, Heart } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import {
+    Alert,
+    AlertDescription,
+    AlertTitle,
+} from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
-import { cn } from '@/lib/utils';
 import AppLayout from '@/layouts/app-layout';
+import { cn } from '@/lib/utils';
 import type { BreadcrumbItem } from '@/types';
 
 // Add custom styles for animations
@@ -85,6 +98,8 @@ type QuizPhase = 'loading' | 'quiz' | 'submitting' | 'result' | 'review' | 'atte
 interface Props {
     subject: string;
     topic?: string;
+    learning_path_id?: number;
+    day_number?: number;
 }
 
 const CHEAT_SCORE_ALERT_THRESHOLD = 5;
@@ -99,6 +114,11 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function QuizPracticePage({ subject, topic }: Props) {
     const { props: pageProps } = usePage();
 
+    // Read learning path context from URL params (for path-based day completion)
+    const urlParams = new URLSearchParams(window.location.search);
+    const learningPathId = urlParams.get('learning_path_id') ? parseInt(urlParams.get('learning_path_id')!) : null;
+    const dayNumber = urlParams.get('day_number') ? parseInt(urlParams.get('day_number')!) : null;
+    const isPathQuiz = learningPathId !== null && dayNumber !== null;
     // Inject custom styles
     useEffect(() => {
         const styleElement = document.createElement('style');
@@ -116,6 +136,8 @@ export default function QuizPracticePage({ subject, topic }: Props) {
     const [answers, setAnswers] = useState<(string | null)[]>([]);
     const [result, setResult] = useState<QuizResult | null>(null);
     const [selectedOption, setSelectedOption] = useState<string | null>(null);
+    const [showExitConfirm, setShowExitConfirm] = useState(false);
+    const [pendingNavUrl, setPendingNavUrl] = useState<string>('/study-planner');
 
     // Lives System (Duolingo-style)
     const MAX_LIVES = 3;
@@ -149,6 +171,8 @@ export default function QuizPracticePage({ subject, topic }: Props) {
     const [cheatWarnings, setCheatWarnings] = useState(0);
     const [violationLog, setViolationLog] = useState<Array<{ reason: string; points: number; timestamp: number }>>([]);
     const alertLockRef = useRef(false);
+    const isConfirmedLeaveRef = useRef(false); // Prevents infinite loop in exit confirm
+    const [sessionSaved, setSessionSaved] = useState(false);
 
     const registerViolation = (reason: string, points: number) => {
         if (alertLockRef.current) return;
@@ -434,6 +458,44 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         setLives(newLives);
     };
 
+    // Intercept Inertia sidebar/breadcrumb navigation while quiz or result is active
+    useEffect(() => {
+        const removeHandler = router.on('before', (event) => {
+            const url = (event.detail.visit as any)?.url?.href ?? '/study-planner';
+
+            if (phase === 'quiz') {
+                if (isConfirmedLeaveRef.current) {
+                    isConfirmedLeaveRef.current = false;
+                    return;
+                }
+                // Mid-quiz: block and show confirmation
+                setPendingNavUrl(url);
+                setShowExitConfirm(true);
+                event.preventDefault();
+                return;
+            }
+
+            if (phase === 'result' && result && !result.passed) {
+                // If leaving failed result page via sidebar/breadcrumbs, silently abandon 
+                // so next visit doesn't show the same failed quiz.
+                const quizId = quiz?.quiz_id;
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+                if (quizId && token) {
+                    fetch(`/quiz/${quizId}/abandon`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': token,
+                            'Accept': 'application/json',
+                        },
+                        keepalive: true,
+                    });
+                }
+            }
+        });
+        return removeHandler;
+    }, [phase, result, quiz]);
+
     useEffect(() => {
         if (!livesReady) return;
         generateQuiz();
@@ -446,11 +508,23 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             return;
         }
 
+        console.log('🚀 Generating quiz', {
+            subject,
+            topic,
+            forceNew,
+            timestamp: new Date().toISOString()
+        });
+
         try {
             setPhase('loading');
 
-            // Get CSRF token from meta tag
+            // Get CSRF token from meta tag with fallback
             const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+            if (!token) {
+                console.error('CSRF token not found');
+                throw new Error('Security token missing. Please refresh the page.');
+            }
 
             // Workaround: Request quiz multiple times to get 10 questions
             const requests = [];
@@ -465,9 +539,9 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                             'Content-Type': 'application/json',
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': token || '',
+                            'X-CSRF-TOKEN': token,
                         },
-                        body: JSON.stringify({ subject, topic, forceNew: forceNew || i > 0 }),
+                        body: JSON.stringify({ subject, topic, forceNew }),
                     })
                 );
             }
@@ -475,13 +549,54 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             // Wait for all requests to complete
             const responses = await Promise.all(requests);
 
-            // Check if all responses are successful
-            if (responses.some(response => !response.ok)) {
-                throw new Error('Failed to generate quiz');
+            // Check each response individually for better error reporting
+            const failedResponses: { index: number; status: number; statusText: string }[] = [];
+            const successfulResponses: Response[] = [];
+
+            responses.forEach((response, index) => {
+                if (!response.ok) {
+                    failedResponses.push({ index, status: response.status, statusText: response.statusText });
+                } else {
+                    successfulResponses.push(response);
+                }
+            });
+
+            if (failedResponses.length > 0) {
+                console.error('Failed quiz generation requests:', failedResponses);
+
+                // If all requests failed, throw error
+                if (failedResponses.length === responses.length) {
+                    const firstError = failedResponses[0];
+                    if (firstError.status === 419) {
+                        throw new Error('Security token expired. Please refresh the page.');
+                    } else if (firstError.status === 404) {
+                        throw new Error('Quiz generation endpoint not found. Please contact support.');
+                    } else {
+                        throw new Error(`Quiz generation failed (${firstError.status}: ${firstError.statusText}). Please try again.`);
+                    }
+                }
+
+                // If some requests failed, continue with successful ones
+                console.warn(`${failedResponses.length} requests failed, continuing with ${successfulResponses.length} successful requests`);
             }
 
-            // Parse all responses
-            const quizDataArray = await Promise.all(responses.map(res => res.json()));
+            // Parse only successful responses
+            const quizDataArray = await Promise.all(
+                successfulResponses.map(res => res.json())
+            );
+
+            // If no successful responses, throw error
+            if (quizDataArray.length === 0) {
+                throw new Error('No quiz data received. Please check your internet connection and try again.');
+            }
+
+            console.log('📊 Backend responses received:', {
+                totalResponses: quizDataArray.length,
+                cachedResponses: quizDataArray.filter(r => r.cached).length,
+                newResponses: quizDataArray.filter(r => !r.cached).length,
+                quizIds: quizDataArray.map(r => r.quiz_id),
+                titles: quizDataArray.map(r => r.title)
+            });
 
             // Combine questions from all responses, ensuring uniqueness
             const allQuestions = [];
@@ -576,6 +691,11 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                 originalQuizzes: quizDataArray.map(q => q.total_questions)
             });
 
+            // Validate we have enough questions
+            if (combinedQuiz.questions.length < 5) {
+                throw new Error('Not enough questions generated. Please try again.');
+            }
+
             setQuiz(combinedQuiz);
             setAnswers(new Array(combinedQuiz.total_questions).fill(null));
             setPhase('quiz');
@@ -583,6 +703,14 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             setSelectedOption(null);
         } catch (error) {
             console.error('Quiz generation error:', error);
+
+            // Show user-friendly error message
+            const errorMessage = error instanceof Error ? error.message : 'Failed to generate quiz. Please try again.';
+
+            // You could show a toast or modal here instead of redirecting
+            alert(errorMessage);
+
+            // Optionally redirect back to study planner
             router.visit('/study-planner');
         }
     };
@@ -700,7 +828,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
 
         return {
             level: 'distracted' as const,
-            message: 'We already warned you about losing focus. To protect your learning time, we need to restart this section now.',
+            message: 'We already warned you about losing focus. To ensure fair assessment and prevent memorization, we\'ll generate fresh questions for this section.',
             action: 'restart_section'
         };
     };
@@ -716,13 +844,13 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                 setCheatWarnings(1);
                 break;
             case 'restart_section':
-                // Reset current quiz section
+                // Reset current quiz section with fresh questions
                 setLearningAlert(prev => ({ ...prev, show: false }));
                 setCheatWarnings(prev => Math.min(prev + 1, 2));
-                setCurrentQuestion(0);
-                setAnswers(new Array(quiz!.total_questions).fill(null));
-                setSelectedOption(null);
-                setTimeRemaining(TOTAL_QUIZ_TIME);
+
+                // Generate fresh questions to prevent memorization
+                generateQuiz(true); // Force new quiz generation
+
                 break;
             case 'adapt_content':
                 // Navigate to easier content or review
@@ -790,38 +918,19 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             setPhase('submitting');
 
             // Clean and validate answers before submission
-            const cleanedAnswers = answers.map((answer, index) => {
-                // Convert to uppercase and ensure it's A, B, C, D, or null
+            const cleanedAnswers = answers.map((answer) => {
                 if (answer === null || answer === undefined || answer === '') {
                     return null;
                 }
                 const upperAnswer = String(answer).toUpperCase().trim();
-                // Validate it's one of the allowed values
                 if (['A', 'B', 'C', 'D'].includes(upperAnswer)) {
                     return upperAnswer;
                 }
-                // If it's not valid, try to extract the letter from the beginning
                 const match = upperAnswer.match(/^([A-D])/);
                 return match ? match[1] : null;
             });
 
-            // Debug: Log what we're sending
             const cheatAnalysis = analyzeCheatPatterns();
-            console.log('Submitting quiz:', {
-                quiz_id: quiz.quiz_id,
-                original_answers: answers,
-                cleaned_answers: cleanedAnswers,
-                answers_detail: cleanedAnswers.map((ans, i) => ({ index: i, value: ans, type: typeof ans })),
-                total_questions: quiz.total_questions,
-                anti_cheat: {
-                    tabSwitches,
-                    suspiciousActivity,
-                    answerTimes,
-                    totalTime,
-                    riskScore: cheatAnalysis.riskScore,
-                    analysis: cheatAnalysis
-                }
-            });
 
             // Get CSRF token from meta tag
             const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -849,7 +958,6 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             });
 
             if (!response.ok) {
-                // Try to get error details
                 const text = await response.text();
                 console.error('Server response:', text);
                 throw new Error(`Server error: ${response.status} - ${text.substring(0, 200)}`);
@@ -858,10 +966,44 @@ export default function QuizPracticePage({ subject, topic }: Props) {
             const resultData = await response.json();
             setResult(resultData);
 
-            // Lives system: lose a life if quiz failed
             const passed = resultData.percentage >= (quiz?.pass_percentage ?? 70);
             if (!passed) {
                 loseLife();
+            } else {
+                if (isPathQuiz) {
+                    // Learning path-based day completion
+                    fetch(`/learning-path/${learningPathId}/complete-day`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': token || '',
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            day_number: dayNumber,
+                            quiz_result_id: resultData.result_id,
+                        }),
+                    }).then(res => {
+                        if (res.ok) setSessionSaved(true);
+                    }).catch(() => {
+                        // Silent — user can still manually mark complete
+                    });
+                } else {
+                    // Legacy: Auto-save the session in the background
+                    fetch(`/study-plan/complete-quiz/${resultData.result_id}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': token || '',
+                            'Accept': 'application/json',
+                            'X-Inertia': 'true',
+                        },
+                    }).then(res => {
+                        if (res.ok) setSessionSaved(true);
+                    }).catch(() => {
+                        // Silent — user can still manually mark complete from result screen
+                    });
+                }
             }
 
             setPhase('result');
@@ -875,15 +1017,48 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         generateQuiz(true); // Force new quiz generation
     };
 
-    const handleContinue = () => {
-        if (phase === 'quiz' && currentQuestion > 0) {
-            // Show confirmation if user has started the quiz
-            if (confirm('Are you sure you want to go back? Your quiz progress will be lost.')) {
-                router.visit('/study-planner');
-            }
+    const performAbandon = (destination: string) => {
+        const quizId = quiz?.quiz_id;
+        const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+
+        const doNavigate = () => {
+            isConfirmedLeaveRef.current = true;
+            router.visit(destination);
+        };
+
+        if (quizId && token) {
+            fetch(`/quiz/${quizId}/abandon`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                    'Accept': 'application/json',
+                },
+            }).finally(doNavigate);
         } else {
-            router.visit('/study-planner');
+            doNavigate();
         }
+    };
+
+    const confirmExit = () => {
+        setShowExitConfirm(false);
+        performAbandon(pendingNavUrl);
+    };
+
+    const handleContinue = () => {
+        if (phase === 'quiz') {
+            setPendingNavUrl('/study-planner');
+            setShowExitConfirm(true);
+            return;
+        }
+
+        if (phase === 'result' && result && !result.passed) {
+            // Leaving after failing — abandon so next time is a fresh random quiz
+            performAbandon('/study-planner');
+            return;
+        }
+
+        router.visit('/study-planner');
     };
 
     const handleReview = () => {
@@ -893,10 +1068,25 @@ export default function QuizPracticePage({ subject, topic }: Props) {
     };
 
     const handleMarkComplete = () => {
-        if (result?.result_id) {
+        // If it was already saved via the background fetch in submitQuiz, just go back
+        if (sessionSaved) {
+            router.visit('/study-planner');
+            return;
+        }
+
+        if (isPathQuiz && result?.result_id) {
+            router.post(`/learning-path/${learningPathId}/complete-day`, {
+                day_number: dayNumber,
+                quiz_result_id: result.result_id
+            }, {
+                onSuccess: () => router.visit('/study-planner'),
+            });
+        } else if (result?.result_id) {
             router.post(`/study-plan/complete-quiz/${result.result_id}`, {}, {
                 onSuccess: () => router.visit('/study-planner'),
             });
+        } else {
+            router.visit('/study-planner');
         }
     };
 
@@ -994,6 +1184,24 @@ export default function QuizPracticePage({ subject, topic }: Props) {
         return (
             <AppLayout breadcrumbs={breadcrumbs}>
                 <Head title={`Quiz: ${subject} - ${topic}`} />
+                <Dialog open={showExitConfirm} onOpenChange={setShowExitConfirm}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Leave this quiz?</DialogTitle>
+                            <DialogDescription>
+                                You&apos;ll lose your current progress if you exit before submitting. Do you want to go back to your study plan?
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setShowExitConfirm(false)}>
+                                Stay on quiz
+                            </Button>
+                            <Button onClick={confirmExit} className="bg-red-600 hover:bg-red-700">
+                                Leave quiz
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
                 <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
                     {/* Learning Alert Modal */}
                     {learningAlert.show && (
@@ -1043,7 +1251,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                                 onClick={() => handleLearningResponse('restart_section')}
                                                 className="w-full"
                                             >
-                                                Restart Section Now
+                                                Generate Fresh Questions
                                             </Button>
                                         )}
                                     </div>
@@ -1146,6 +1354,7 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                         {question.options.map((option, index) => {
                                             const optionText = getOptionText(option);
                                             const isSelected = selectedOption === optionText;
+                                            const optionLetter = String.fromCharCode(65 + index); // A, B, C, D
 
                                             return (
                                                 <button
@@ -1162,12 +1371,22 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                                     style={{ animationDelay: `${index * 100}ms` }}
                                                 >
                                                     <div className="flex items-center justify-between">
-                                                        <span className={cn(
-                                                            "font-medium transition-colors duration-200",
-                                                            isSelected ? "text-blue-700" : "text-gray-900"
-                                                        )}>
-                                                            {getOptionText(option)}
-                                                        </span>
+                                                        <div className="flex items-center gap-3">
+                                                            <span className={cn(
+                                                                "flex items-center justify-center w-8 h-8 rounded-full border-2 font-bold text-sm transition-colors duration-200",
+                                                                isSelected
+                                                                    ? "border-blue-500 bg-blue-500 text-white"
+                                                                    : "border-gray-300 bg-gray-100 text-gray-600"
+                                                            )}>
+                                                                {optionLetter}
+                                                            </span>
+                                                            <span className={cn(
+                                                                "font-medium transition-colors duration-200",
+                                                                isSelected ? "text-blue-700" : "text-gray-900"
+                                                            )}>
+                                                                {optionText}
+                                                            </span>
+                                                        </div>
                                                         {isSelected && (
                                                             <CheckCircle2 className="w-5 h-5 text-blue-600 animate-scaleIn" />
                                                         )}
@@ -1176,7 +1395,6 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                             );
                                         })}
                                     </div>
-
                                     {/* Navigation */}
                                     <div className="flex items-center justify-between mt-8 animate-slideIn" style={{ animationDelay: '600ms' }}>
                                         <Button
@@ -1307,29 +1525,39 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                     Review Answers
                                 </Button>
                                 {result.passed ? (
-                                    <Button
-                                        onClick={handleMarkComplete}
-                                        className="w-full transition-all duration-200 hover:scale-105 active:scale-95"
-                                    >
-                                        <CheckCircle2 className="w-4 h-4 mr-2" />
-                                        Mark Session Complete
-                                    </Button>
+                                    <>
+                                        {sessionSaved && (
+                                            <div className="flex items-center justify-center gap-2 py-2 px-4 bg-green-50 border border-green-200 rounded-lg text-sm text-green-700">
+                                                <CheckCircle2 className="w-4 h-4" />
+                                                Session saved to your study plan
+                                            </div>
+                                        )}
+                                        <Button
+                                            onClick={handleMarkComplete}
+                                            className="w-full transition-all duration-200 hover:scale-105 active:scale-95"
+                                        >
+                                            <CheckCircle2 className="w-4 h-4 mr-2" />
+                                            {sessionSaved ? 'Back to Study Plan' : 'Mark Session Complete'}
+                                        </Button>
+                                    </>
                                 ) : (
-                                    <Button
-                                        onClick={handleRetry}
-                                        className="w-full transition-all duration-200 hover:scale-105 active:scale-95"
-                                    >
-                                        <RotateCcw className="w-4 h-4 mr-2" />
-                                        Retry Quiz
-                                    </Button>
+                                    <>
+                                        <Button
+                                            onClick={handleRetry}
+                                            className="w-full transition-all duration-200 hover:scale-105 active:scale-95"
+                                        >
+                                            <RotateCcw className="w-4 h-4 mr-2" />
+                                            Retry Quiz
+                                        </Button>
+                                        <Button
+                                            variant="ghost"
+                                            onClick={handleContinue}
+                                            className="w-full text-gray-600 transition-all duration-200 hover:scale-105 active:scale-95"
+                                        >
+                                            Continue Studying
+                                        </Button>
+                                    </>
                                 )}
-                                <Button
-                                    variant="ghost"
-                                    onClick={handleContinue}
-                                    className="w-full text-gray-600 transition-all duration-200 hover:scale-105 active:scale-95"
-                                >
-                                    Continue Studying
-                                </Button>
                             </div>
                         </CardContent>
                     </Card>
@@ -1364,67 +1592,110 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                                     </CardContent>
                                 </Card>
                             ) : (
-                                result.review.map((item, index) => (
-                                    <Card key={index} className="shadow">
-                                        <CardContent className="p-6">
-                                            <div className="flex items-start gap-3 mb-4">
-                                                <div className={cn(
-                                                    "rounded-full w-8 h-8 flex items-center justify-center font-semibold text-sm",
-                                                    item.is_correct ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
-                                                )}>
-                                                    {index + 1}
+                                result.review.map((item, index) => {
+                                    const correctOption = item.options?.find((option) => {
+                                        const optionText = getOptionText(option);
+                                        const optionLabel = getOptionLabel(option);
+                                        return optionText === item.correct_answer || optionLabel === item.correct_answer;
+                                    });
+                                    const correctAnswerText = correctOption ? getOptionText(correctOption) : item.correct_answer;
+
+                                    return (
+                                        <Card key={index} className="shadow">
+                                            <CardContent className="p-6">
+                                                <div className="flex items-start gap-3 mb-4">
+                                                    <div className={cn(
+                                                        "rounded-full w-8 h-8 flex items-center justify-center font-semibold text-sm",
+                                                        item.is_correct ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                                                    )}>
+                                                        {index + 1}
+                                                    </div>
+                                                    <h3 className="font-medium text-gray-900 flex-1">{item.question}</h3>
+                                                    {item.is_correct ? (
+                                                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                                                    ) : (
+                                                        <XCircle className="w-5 h-5 text-red-600" />
+                                                    )}
                                                 </div>
-                                                <h3 className="font-medium text-gray-900 flex-1">{item.question}</h3>
-                                                {item.is_correct ? (
-                                                    <CheckCircle2 className="w-5 h-5 text-green-600" />
-                                                ) : (
-                                                    <XCircle className="w-5 h-5 text-red-600" />
-                                                )}
-                                            </div>
 
-                                            <div className="space-y-2">
-                                                {item.options && item.options.map((option, optIndex) => {
-                                                    const optionText = getOptionText(option);
-                                                    const isCorrect = optionText === item.correct_answer;
-                                                    const isUserAnswer = optionText === item.user_answer;
+                                                <div className="space-y-2">
+                                                    {item.options && item.options.map((option, optIndex) => {
+                                                        const optionText = getOptionText(option);
+                                                        const optionLabel = getOptionLabel(option);
+                                                        const isCorrect = optionText === item.correct_answer || optionLabel === item.correct_answer;
+                                                        const isUserAnswer = optionText === item.user_answer || optionLabel === item.user_answer;
+                                                        const optionLetter = String.fromCharCode(65 + optIndex); // A, B, C, D
 
-                                                    return (
-                                                        <div
-                                                            key={optIndex}
-                                                            className={cn(
-                                                                "p-3 rounded-lg border",
-                                                                isCorrect && "bg-green-50 border-green-200",
-                                                                isUserAnswer && !isCorrect && "bg-red-50 border-red-200",
-                                                                !isCorrect && !isUserAnswer && "bg-gray-50 border-gray-200"
-                                                            )}
-                                                        >
-                                                            <div className="flex items-center justify-between">
-                                                                <span className="text-sm">{optionText}</span>
-                                                                {isCorrect && <span className="text-xs font-medium text-green-700">Correct</span>}
-                                                                {isUserAnswer && !isCorrect && <span className="text-xs font-medium text-red-700">Your answer</span>}
+                                                        return (
+                                                            <div
+                                                                key={optIndex}
+                                                                className={cn(
+                                                                    "p-3 rounded-lg border",
+                                                                    isCorrect && "bg-green-50 border-green-200",
+                                                                    isUserAnswer && !isCorrect && "bg-red-50 border-red-200",
+                                                                    !isCorrect && !isUserAnswer && "bg-gray-50 border-gray-200"
+                                                                )}
+                                                            >
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-3">
+                                                                        <span className={cn(
+                                                                            "flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold",
+                                                                            isCorrect && "bg-green-200 text-green-700",
+                                                                            isUserAnswer && !isCorrect && "bg-red-200 text-red-700",
+                                                                            !isCorrect && !isUserAnswer && "bg-gray-200 text-gray-600"
+                                                                        )}>
+                                                                            {optionLetter}
+                                                                        </span>
+                                                                        <span className="flex-1 text-sm">{optionText}</span>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-2">
+                                                                        {isCorrect && (
+                                                                            <span className="text-xs font-medium text-green-700">Correct</span>
+                                                                        )}
+                                                                        {isUserAnswer && !isCorrect && (
+                                                                            <span className="text-xs font-medium text-red-700">Your answer</span>
+                                                                        )}
+                                                                        {isCorrect && (
+                                                                            <CheckCircle2 className="w-4 h-4 text-green-600" />
+                                                                        )}
+                                                                        {isUserAnswer && !isCorrect && (
+                                                                            <XCircle className="w-4 h-4 text-red-600" />
+                                                                        )}
+                                                                    </div>
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-
-                                            {item.explanation && (
-                                                <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                                    <p className="text-sm text-blue-900">
-                                                        <strong>Explanation:</strong> {item.explanation}
-                                                    </p>
+                                                        );
+                                                    })}
                                                 </div>
-                                            )}
-                                        </CardContent>
-                                    </Card>
-                                ))
+
+                                                {item.explanation && (
+                                                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                                        <p className="text-sm text-blue-900">
+                                                            <strong>Explanation:</strong> {item.explanation}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </CardContent>
+                                        </Card>
+                                    )
+                                })
                             )}
+                        </div>
+
+                        {/* Bottom action — matches the top back button style */}
+                        <div className="mt-8 pt-6 border-t border-gray-200 flex justify-end">
+                            <Button
+                                variant="ghost"
+                                onClick={() => setPhase('result')}
+                                className="text-gray-600 hover:text-gray-900"
+                            >
+                                <ArrowLeft className="w-4 h-4 mr-2" />
+                                Back to Results
+                            </Button>
                         </div>
                     </div>
                 </div>
             </AppLayout>
         );
     }
-
-    return null;
 }

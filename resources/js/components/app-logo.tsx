@@ -7,8 +7,8 @@ export default function AppLogo() {
 
     return (
         <div className="flex items-center gap-2">
-            <AppLogoIcon className="size-6 fill-current text-black dark:text-white" />
-            <span className="text-sm font-medium text-foreground">{name}</span>
+            <AppLogoIcon className="h-6 w-auto" />
+            <span className="text-base font-bold tracking-tight text-foreground">{name}</span>
         </div>
     );
 }

@@ -1,4 +1,9 @@
+import { usePage } from '@inertiajs/react';
+import { useEffect } from 'react';
+import { Toaster, toast } from 'sonner';
 import type { ReactNode } from 'react';
+import type { SharedData } from '@/types';
+import AppLogo from '@/components/app-logo';
 
 interface OnboardingLayoutProps {
     children: ReactNode;
@@ -7,6 +12,25 @@ interface OnboardingLayoutProps {
 export default function OnboardingLayout({
     children,
 }: OnboardingLayoutProps) {
+    const { props } = usePage<SharedData>();
+    const flash = props.flash;
+
+    useEffect(() => {
+        if (!flash) return;
+
+        if (flash.success) {
+            toast.success(flash.success as string, { id: `success-${flash.success}` });
+        }
+        if (flash.error) {
+            toast.error(flash.error as string, { id: `error-${flash.error}` });
+        }
+        if (flash.info) {
+            toast.info(flash.info as string, { id: `info-${flash.info}` });
+        }
+        if (flash.warning) {
+            toast.warning(flash.warning as string, { id: `warning-${flash.warning}` });
+        }
+    }, [flash]);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
@@ -22,10 +46,7 @@ export default function OnboardingLayout({
                 <header className="border-b border-border/40 bg-white/50 backdrop-blur-sm dark:bg-slate-900/50">
                     <div className="container mx-auto flex h-16 items-center justify-between px-4">
                         <div className="flex items-center gap-2">
-                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
-                                <span className="text-sm font-bold text-white">SP</span>
-                            </div>
-                            <span className="text-lg font-semibold text-foreground">Study Planner</span>
+                            <AppLogo />
                         </div>
 
                         <div className="flex items-center gap-4">
@@ -49,6 +70,8 @@ export default function OnboardingLayout({
                         </p>
                     </div>
                 </footer>
+
+                <Toaster position="top-right" richColors closeButton />
             </div>
         </div>
     );

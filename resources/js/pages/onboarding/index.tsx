@@ -1,5 +1,5 @@
-import { Head, useForm } from '@inertiajs/react';
-import { X, BookOpen, Brain, CalendarDays, CheckCircle2, Clock, Compass, Eye, Hand, Headphones, Sparkles, Sun, Sunrise, Sunset, Moon, Star, Target, Timer } from 'lucide-react';
+import { Head, useForm, router, usePage } from '@inertiajs/react';
+import { X, BookOpen, Brain, CalendarDays, CheckCircle2, Clock, Compass, Target, Timer, Star, Sparkles, AlertTriangle, Lightbulb } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -15,16 +15,18 @@ import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import OnboardingLayout from '@/layouts/onboarding-layout';
 import { cn } from '@/lib/utils';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import type { SharedData } from '@/types';
 
 type OnboardingData = {
     subjects: string[];
-    exam_dates: Record<string, string | null>;
     daily_study_hours: number | null;
     study_goal: string | null;
     timezone: string | null;
-    productivity_peak?: string | null;
     subject_difficulties?: Record<string, number> | null;
     subject_session_durations?: Record<string, { min: number; max: number }> | null;
+    subject_start_dates?: Record<string, string | null>;
+    subject_end_dates?: Record<string, string | null>;
 };
 
 type Props = {
@@ -36,11 +38,11 @@ type Props = {
 type WizardForm = {
     step: number;
     subjects: string[];
-    exam_dates: Record<string, string | null>;
     daily_study_hours: number | '';
-    productivity_peak: string;
     subject_difficulties: Record<string, number>;
     subject_session_durations: Record<string, { min: number; max: number }>;
+    subject_start_dates: Record<string, string | null>;
+    subject_end_dates: Record<string, string | null>;
     study_goal: string;
     timezone: string;
     confirm: boolean;
@@ -120,24 +122,32 @@ function ChoiceCard({
 }
 
 export default function OnboardingWizard({ step, totalSteps, onboarding }: Props) {
+    const { flash } = usePage<SharedData>().props;
+    const warning = flash?.onboarding_warning as { title: string; message: string | string[]; recommendations: string[] } | undefined;
+
+    const formatDuration = (min: number) => {
+        if (!min) return '';
+        if (min < 60) return `${min} min`;
+        const hours = Math.floor(min / 60);
+        const remainingMin = min % 60;
+        return remainingMin === 0 ? `${hours}h` : `${hours}h ${remainingMin}min`;
+    };
+
     const form = useForm<WizardForm>({
         step,
         subjects: onboarding.subjects ?? [],
-        exam_dates: onboarding.exam_dates ?? {},
         daily_study_hours: onboarding.daily_study_hours ?? 2,
-        productivity_peak: onboarding.productivity_peak ?? 'morning',
         subject_difficulties: onboarding.subject_difficulties ?? {},
         subject_session_durations: onboarding.subject_session_durations ?? {},
+        subject_start_dates: onboarding.subject_start_dates ?? {},
+        subject_end_dates: onboarding.subject_end_dates ?? {},
         study_goal: onboarding.study_goal ?? '',
         timezone: onboarding.timezone || (Intl.DateTimeFormat().resolvedOptions().timeZone === 'Asia/Rangoon' ? 'Asia/Yangon' : Intl.DateTimeFormat().resolvedOptions().timeZone),
         confirm: false,
     });
 
-    const [customSubject, setCustomSubject] = useState('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [processingMessage, setProcessingMessage] = useState('');
-
-    // Autocomplete state
     const [subjectInputValue, setSubjectInputValue] = useState('');
 
     useEffect(() => {
@@ -150,64 +160,47 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
         }
     }, [form.data.timezone]);
 
-    const effectiveExamDates = useMemo(() => {
-        const out: Record<string, string | null> = { ...form.data.exam_dates };
 
-        for (const subject of form.data.subjects) {
-            if (!(subject in out)) out[subject] = null;
-        }
-
-        for (const key of Object.keys(out)) {
-            if (!form.data.subjects.includes(key)) {
-                delete out[key];
-            }
-        }
-
-        return out;
-    }, [form.data.exam_dates, form.data.subjects]);
-
-    useEffect(() => {
-        if (
-            JSON.stringify(Object.keys(effectiveExamDates).sort()) ===
-            JSON.stringify(Object.keys(form.data.exam_dates).sort())
-        ) {
-            return;
-        }
-
-        form.setData('exam_dates', effectiveExamDates);
-    }, [effectiveExamDates, form.data.exam_dates]);
-
-    // Use the simplified subjects API hook
     const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
-
-    // Search suggestions hook
     const { data: searchData } = useSearchSuggestions(subjectInputValue);
     const suggestions = searchData?.subjects || [];
 
-    // Remove the old useEffect since useSearchSuggestions handles searching automatically
+    const subjectsMissingDates = useMemo(() => {
+        const startDates = form.data.subject_start_dates || {};
+        const endDates = form.data.subject_end_dates || {};
+        return form.data.subjects.filter((subject) => !startDates[subject] || !endDates[subject]);
+    }, [form.data.subjects, form.data.subject_start_dates, form.data.subject_end_dates]);
+    const hasMissingDates = subjectsMissingDates.length > 0;
+
+    const getDayCount = (subject: string): number | null => {
+        const start = form.data.subject_start_dates?.[subject];
+        const end = form.data.subject_end_dates?.[subject];
+        if (!start || !end) return null;
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+        const diffTime = endDate.getTime() - startDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        return diffDays > 0 ? diffDays : null;
+    };
 
     const addSubject = async (subjectName: string) => {
         if (!form.data.subjects.includes(subjectName)) {
-            // Use the same predefined subjects list from the hook
             const predefinedSubjects = allSubjects || [];
             const isCustomSubject = !predefinedSubjects.includes(subjectName);
 
-            // Update UI immediately (optimistic update)
             const newSubjects = [...form.data.subjects, subjectName];
             const newDifficulties = {
                 ...form.data.subject_difficulties,
-                [subjectName]: 2, // Default difficulty: Medium
+                [subjectName]: 2,
             };
 
             form.setData('subjects', newSubjects);
             form.setData('subject_difficulties', newDifficulties);
             setSubjectInputValue('');
 
-            // Add to database in background (non-blocking)
             if (isCustomSubject) {
-                addCustomSubject(subjectName).catch(() => {
-                    // Subject is already in UI, so no need to remove it
-                });
+                addCustomSubject(subjectName).catch(() => { });
             }
         }
     };
@@ -219,12 +212,11 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
         const newSubjects = form.data.subjects.filter((s) => s !== subjectName);
         const newDifficulties = { ...form.data.subject_difficulties };
-        delete newDifficulties[subjectName]; // Remove difficulty for this subject
+        delete newDifficulties[subjectName];
 
         form.setData('subjects', newSubjects);
         form.setData('subject_difficulties', newDifficulties);
 
-        // Also clear the input if it matches the removed subject
         if (subjectInputValue === subjectName) {
             setSubjectInputValue('');
         }
@@ -239,27 +231,28 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
     const backHref = `/onboarding?step=${Math.max(1, step - 1)}`;
 
     function next() {
+        if (step === 2 && hasMissingDates) {
+            return;
+        }
+
         if (step === totalSteps) {
-            if (!form.data.confirm) {
-                // Ensure all subjects have default difficulties before submission
-                const finalDifficulties = { ...form.data.subject_difficulties };
-
-                // Force reset if difficulties is an array instead of object
-                if (Array.isArray(form.data.subject_difficulties)) {
-                    form.setData('subject_difficulties', {});
+            // Ensure all subjects have default difficulties
+            const finalDifficulties = { ...form.data.subject_difficulties };
+            if (Array.isArray(form.data.subject_difficulties)) {
+                Object.keys(finalDifficulties).forEach(k => delete finalDifficulties[k]);
+            }
+            form.data.subjects.forEach((subject: string) => {
+                if (!finalDifficulties[subject]) {
+                    finalDifficulties[subject] = 2;
                 }
+            });
 
-                // Ensure all subjects have default difficulties
-                form.data.subjects.forEach((subject: string) => {
-                    if (!finalDifficulties[subject]) {
-                        finalDifficulties[subject] = 2; // Default to Medium
-                    }
-                });
-
-                // Update form data with ensured difficulties
-                form.setData('subject_difficulties', finalDifficulties);
-
-                form.post('/onboarding', {
+            if (!form.data.confirm) {
+                router.post('/onboarding', {
+                    ...form.data,
+                    step: totalSteps,
+                    subject_difficulties: finalDifficulties,
+                }, {
                     preserveScroll: true,
                 });
                 return;
@@ -268,7 +261,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
             setIsProcessing(true);
             const messages = [
                 "Analyzing subject difficulty...",
-                "Mapping exam dates...",
+                "Mapping your study dates...",
                 "Optimizing for your peak energy...",
                 "Configuring for your learning style...",
                 "Neuron AI is crafting your plan..."
@@ -281,37 +274,29 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                     i++;
                 } else {
                     clearInterval(interval);
-                    form.post('/onboarding', {
-                        onError: () => setIsProcessing(false)
+                    router.post('/onboarding', {
+                        ...form.data,
+                        step: totalSteps,
+                        subject_difficulties: finalDifficulties,
+                    }, {
+                        onError: () => setIsProcessing(false),
                     });
                 }
             }, 800);
             return;
         }
 
-        form.transform((data) => {
-            const finalSubjects = [...data.subjects];
-
-            if (step === 2 && customSubject.trim()) {
-                const trimmed = customSubject.trim();
-                if (!finalSubjects.includes(trimmed)) {
-                    finalSubjects.push(trimmed);
-                }
-            }
-
-            return {
-                ...data,
-                subjects: finalSubjects,
-            };
+        // Submit the current step so the backend processes this step,
+        // then rely on the redirect to advance to the next step.
+        console.log(`[Onboarding] Submitting step ${step}`, {
+            subjects: form.data.subjects,
+            subject_session_durations: form.data.subject_session_durations,
         });
-
-        form.setData('step', step + 1);
-
-        form.post('/onboarding', {
+        router.post('/onboarding', {
+            ...form.data,
+            step,
+        }, {
             preserveScroll: true,
-            onSuccess: () => {
-                if (step === 2) setCustomSubject('');
-            },
         });
     }
 
@@ -324,14 +309,53 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                     <div className="space-y-6">
                         <div className="space-y-4">
                             <Heading
-                                title="Let’s build your study plan"
-                                description="A few quick questions so the AI can create a realistic schedule tailored to you."
+                                title="Your Continuous Study Schedule"
+                                description="A personalized Learning Path crafted by Neuron AI based on your long-term goals."
                             />
                             <ProgressBar step={step} totalSteps={totalSteps} />
                         </div>
 
                         <div className="flex justify-center">
                             <div className="w-full max-w-2xl space-y-6">
+
+                                {warning && (
+                                    <Alert className="border-amber-200 bg-amber-50 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+                                        <AlertTriangle className="h-5 w-5 text-amber-600" />
+                                        <div className="ml-3">
+                                            <AlertTitle className="text-amber-800 font-bold flex items-center gap-2">
+                                                {warning.title}
+                                            </AlertTitle>
+                                            <AlertDescription className="text-amber-700 mt-1 leading-relaxed">
+                                                {Array.isArray(warning.message) ? (
+                                                    <ul className="list-disc list-inside space-y-1">
+                                                        {warning.message.map((msg, idx) => (
+                                                            <li key={idx}>{msg}</li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    warning.message
+                                                )}
+
+                                                {warning.recommendations && warning.recommendations.length > 0 && (
+                                                    <div className="mt-3 bg-white/60 rounded-lg p-3 border border-amber-200 shadow-sm">
+                                                        <div className="flex items-center gap-1.5 text-xs font-bold mb-2 text-amber-900 uppercase tracking-wider">
+                                                            <Lightbulb className="size-3 text-amber-600" />
+                                                            Assistant Recommendations:
+                                                        </div>
+                                                        <ul className="space-y-1.5 text-sm">
+                                                            {warning.recommendations.map((rec, idx) => (
+                                                                <li key={idx} className="flex items-start gap-2">
+                                                                    <span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />
+                                                                    {rec}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                    </div>
+                                                )}
+                                            </AlertDescription>
+                                        </div>
+                                    </Alert>
+                                )}
 
                                 <Card className="relative overflow-hidden">
                                     {isProcessing && (
@@ -356,69 +380,29 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                         </div>
                                     )}
                                     <CardContent className="space-y-6">
+                                        {/* STEP 1: Subjects + Daily Hours + Study Goal */}
                                         {step === 1 ? (
-                                            <div className="space-y-5">
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Sparkles className="size-5" />
-                                                        <h3 className="text-lg font-semibold">
-                                                            Welcome
-                                                        </h3>
-                                                    </div>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        This only takes 2–3 minutes. We’ll ask about your subjects,
-                                                        deadlines, and available time so your plan stays achievable.
-                                                    </p>
-                                                </div>
-
-                                                <div className="grid gap-3">
-                                                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                                                        <div className="flex items-start gap-3">
-                                                            <CheckCircle2 className="mt-0.5 size-5" />
-                                                            <div className="space-y-1">
-                                                                <div className="font-medium">
-                                                                    Trust promise
-                                                                </div>
-                                                                <div className="text-muted-foreground">
-                                                                    We only use these answers to personalize your study plan.
-                                                                    You can change them later in Settings.
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </div>
-
-                                                <div className="flex items-center justify-between">
-                                                    <div />
-                                                    <Button
-                                                        type="button"
-                                                        disabled={form.processing}
-                                                        onClick={next}
-                                                    >
-                                                        Start
-                                                    </Button>
-                                                </div>
-
-                                                <InputError message={form.errors.step} />
-                                            </div>
-                                        ) : null}
-
-                                        {step === 2 ? (
                                             <div className="space-y-6">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2">
                                                         <BookOpen className="size-5" />
                                                         <h3 className="text-lg font-semibold">
-                                                            Select your subjects
+                                                            Getting started
                                                         </h3>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        Search and select the subjects you want to study
+                                                        Tell us about your subjects, daily study time, and goals
                                                     </p>
                                                 </div>
 
-                                                {/* Simple Autocomplete Input */}
-                                                <div className="relative">
+                                                {/* Subjects */}
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between">
+                                                        <Label className="text-sm font-medium">Select your subjects</Label>
+                                                        <Badge variant={form.data.subjects.length >= 6 ? "destructive" : "secondary"} className="font-bold">
+                                                            {form.data.subjects.length}/6 Subjects
+                                                        </Badge>
+                                                    </div>
                                                     <SimpleAutocomplete
                                                         value={subjectInputValue}
                                                         onValueChange={setSubjectInputValue}
@@ -427,92 +411,96 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                         selectedSubjects={form.data.subjects}
                                                         onRemoveSubject={removeSubject}
                                                         onClearAll={clearAllSubjects}
+                                                        disabled={form.data.subjects.length >= 6}
                                                         placeholder={
-                                                            form.data.subjects.length === 0
-                                                                ? "Type to search subjects (e.g., Mathematics, Physics, Chemistry)..."
-                                                                : "Add more subjects or type custom ones..."
+                                                            form.data.subjects.length >= 6
+                                                                ? "Limit reached (6/6)"
+                                                                : form.data.subjects.length === 0
+                                                                    ? "Type to search subjects (e.g., Mathematics, Physics)..."
+                                                                    : "Add more subjects..."
                                                         }
                                                         className="w-full"
                                                     />
-                                                </div>
-
-                                                {/* Selected Subjects */}
-                                                {form.data.subjects.length > 0 && (
-                                                    <Card>
-                                                        <CardContent className="pt-6">
-                                                            <div className="space-y-3">
-                                                                <div className="flex items-center justify-between">
-                                                                    <h3 className="text-sm font-medium text-muted-foreground">
-                                                                        Selected Subjects
-                                                                    </h3>
-                                                                    <div className="text-sm text-blue-600 font-medium">
-                                                                        {form.data.subjects.length} subject{form.data.subjects.length !== 1 ? 's' : ''} selected
-                                                                    </div>
-                                                                </div>
-                                                                <div className="text-sm text-muted-foreground mb-2">
-                                                                    {form.data.subjects.length === 0
-                                                                        ? "Select 3-5 subjects for best results"
-                                                                        : `Great! ${form.data.subjects.length === 1 ? 'Keep going' : form.data.subjects.length < 3 ? 'Add a few more' : 'Perfect selection'}`}
-                                                                </div>
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {form.data.subjects.map((subject) => (
-                                                                        <Badge
-                                                                            key={subject}
-                                                                            variant="secondary"
-                                                                            className="flex items-center gap-1 px-3 py-1 hover:bg-red-50 transition-all duration-200 transform hover:scale-105 shadow-sm hover:shadow-md"
-                                                                        >
-                                                                            <span>{subject}</span>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(e) => {
-                                                                                    e.preventDefault();
-                                                                                    e.stopPropagation();
-                                                                                    removeSubject(subject);
-                                                                                }}
-                                                                                className="ml-1 text-red-500 hover:text-red-700 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-red-500 rounded-full p-0.5 transition-all duration-200"
-                                                                                title={`Remove ${subject}`}
-                                                                            >
-                                                                                <X className="h-3 w-3" />
-                                                                            </button>
-                                                                        </Badge>
-                                                                    ))}
-                                                                </div>
-                                                            </div>
-                                                        </CardContent>
-                                                    </Card>
-                                                )}
-
-                                                <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                                                    <div className="flex items-start gap-3">
-                                                        <Brain className="mt-0.5 size-5" />
-                                                        <div className="space-y-1">
-                                                            <div className="font-medium">
-                                                                Why we ask
-                                                            </div>
-                                                            <div className="text-muted-foreground">
-                                                                The planner balances subjects so you don't over-focus on
-                                                                just one.
-                                                            </div>
+                                                    {form.data.subjects.length >= 6 && (
+                                                        <p className="text-[10px] text-destructive font-bold flex items-center gap-1.5 px-1 animate-pulse">
+                                                            <AlertTriangle className="size-3" />
+                                                            "Focus Six" reached! Specialized depth is better than spreading too thin.
+                                                        </p>
+                                                    )}
+                                                    {form.data.subjects.length > 0 && (
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {form.data.subjects.map((subject) => (
+                                                                <Badge
+                                                                    key={subject}
+                                                                    variant="secondary"
+                                                                    className="flex items-center gap-1 px-3 py-1"
+                                                                >
+                                                                    <span>{subject}</span>
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => removeSubject(subject)}
+                                                                        className="ml-1 text-red-500 hover:text-red-700"
+                                                                    >
+                                                                        <X className="h-3 w-3" />
+                                                                    </button>
+                                                                </Badge>
+                                                            ))}
                                                         </div>
-                                                    </div>
+                                                    )}
+                                                    <InputError message={typeof form.errors.subjects === 'string' ? form.errors.subjects : undefined} />
                                                 </div>
-                                                <InputError
-                                                    message={typeof form.errors.subjects === 'string' ? form.errors.subjects : undefined}
-                                                />
 
-                                                <div className="flex items-center justify-between">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        asChild
-                                                        disabled={!canGoBack}
+                                                {/* Daily Study Hours */}
+                                                <div className="space-y-3">
+                                                    <Label htmlFor="daily_study_hours" className="text-sm font-medium">
+                                                        Daily study hours
+                                                    </Label>
+                                                    <Select
+                                                        value={form.data.daily_study_hours?.toString() || '2'}
+                                                        onValueChange={(value) =>
+                                                            form.setData('daily_study_hours', Number(value))
+                                                        }
                                                     >
-                                                        <a href={backHref}>Back</a>
-                                                    </Button>
+                                                        <SelectTrigger className="w-32">
+                                                            <SelectValue placeholder="Select hours" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {[1, 2, 3, 4, 5, 6].map((hour) => (
+                                                                <SelectItem key={hour} value={hour.toString()}>
+                                                                    {hour} {hour === 1 ? 'hour' : 'hours'}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                    <InputError message={form.errors.daily_study_hours} />
+                                                </div>
 
+                                                {/* Study Goal */}
+                                                <div className="space-y-3">
+                                                    <Label className="text-sm font-medium">Study goal</Label>
+                                                    <div className="grid gap-3 md:grid-cols-2">
+                                                        <ChoiceCard
+                                                            title="Build strong foundation"
+                                                            description="Focus on core concepts"
+                                                            selected={form.data.study_goal === 'Build strong foundation'}
+                                                            icon={<CheckCircle2 className="size-5" />}
+                                                            onClick={() => form.setData('study_goal', 'Build strong foundation')}
+                                                        />
+                                                        <ChoiceCard
+                                                            title="Achieve top performance"
+                                                            description="Deep understanding & practice"
+                                                            selected={form.data.study_goal === 'Achieve top performance'}
+                                                            icon={<Target className="size-5" />}
+                                                            onClick={() => form.setData('study_goal', 'Achieve top performance')}
+                                                        />
+                                                    </div>
+                                                    <InputError message={form.errors.study_goal} />
+                                                </div>
+
+                                                <div className="flex items-center justify-end">
                                                     <Button
                                                         type="button"
-                                                        disabled={form.processing}
+                                                        disabled={form.processing || form.data.subjects.length === 0 || !form.data.study_goal}
                                                         onClick={next}
                                                     >
                                                         Next
@@ -521,48 +509,74 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                             </div>
                                         ) : null}
 
-                                        {step === 3 ? (
+                                        {/* STEP 2: Subject Details (Exam dates, Start/End dates, Difficulty) */}
+                                        {step === 2 ? (
                                             <div className="space-y-6">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2">
                                                         <CalendarDays className="size-5" />
                                                         <h3 className="text-lg font-semibold">
-                                                            Add exam dates
+                                                            Subject details
                                                         </h3>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        Optional, but recommended. Deadlines help the AI prioritize.
+                                                        Set your study timeline and difficulty for each subject
                                                     </p>
                                                 </div>
 
                                                 <div className="space-y-4">
-                                                    {form.data.subjects.map((subject) => (
-                                                        <div key={subject} className="space-y-2">
-                                                            <div className="flex flex-col gap-4 p-4 rounded-xl border border-border bg-card/50">
-                                                                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                                                    <div className="space-y-1">
-                                                                        <Label htmlFor={`subject-${subject}`} className="text-base font-semibold">
-                                                                            {subject}
-                                                                        </Label>
-                                                                        <p className="text-sm text-muted-foreground">When is your exam?</p>
-                                                                    </div>
-                                                                    <div className="w-full md:w-55">
-                                                                        <DatePicker
-                                                                            id={`subject-${subject}`}
-                                                                            value={form.data.exam_dates[subject]}
-                                                                            onChange={(value) =>
-                                                                                form.setData('exam_dates', {
-                                                                                    ...form.data.exam_dates,
-                                                                                    [subject]: value,
-                                                                                })
-                                                                            }
-                                                                            placeholder="Pick an exam date"
-                                                                        />
+                                                    {form.data.subjects.map((subject) => {
+                                                        const startValue = form.data.subject_start_dates[subject];
+                                                        const endValue = form.data.subject_end_dates[subject];
+                                                        const startError = (form.errors as Record<string, string | undefined>)[`subject_start_dates.${subject}`] || (!startValue ? 'Required' : undefined);
+                                                        const endError = (form.errors as Record<string, string | undefined>)[`subject_end_dates.${subject}`] || (!endValue ? 'Required' : undefined);
+                                                        return (
+                                                            <div key={subject} className="p-4 rounded-xl border border-border bg-card/50 space-y-4">
+                                                                <div className="flex items-center justify-between">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <Label className="text-base font-semibold">{subject}</Label>
+                                                                        {getDayCount(subject) !== null && (
+                                                                            <Badge variant="secondary" className="text-xs font-medium">
+                                                                                <CalendarDays className="size-3 mr-1" />
+                                                                                {getDayCount(subject)} days
+                                                                            </Badge>
+                                                                        )}
                                                                     </div>
                                                                 </div>
 
-                                                                <div className="space-y-2 pt-2 border-t border-border/50">
-                                                                    <Label className="text-sm font-medium text-muted-foreground uppercase">Difficulty Level</Label>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                    <div className="space-y-1.5">
+                                                                        <Label className="text-xs">Start Date <span className="text-rose-500 font-bold">*</span></Label>
+                                                                        <DatePicker
+                                                                            value={form.data.subject_start_dates[subject]}
+                                                                            onChange={(value) =>
+                                                                                form.setData('subject_start_dates', {
+                                                                                    ...form.data.subject_start_dates,
+                                                                                    [subject]: value,
+                                                                                })
+                                                                            }
+                                                                            placeholder="Pick a date"
+                                                                        />
+                                                                        <InputError message={startError} />
+                                                                    </div>
+                                                                    <div className="space-y-1.5">
+                                                                        <Label className="text-xs">End Date <span className="text-rose-500 font-bold">*</span></Label>
+                                                                        <DatePicker
+                                                                            value={form.data.subject_end_dates[subject]}
+                                                                            onChange={(value) =>
+                                                                                form.setData('subject_end_dates', {
+                                                                                    ...form.data.subject_end_dates,
+                                                                                    [subject]: value,
+                                                                                })
+                                                                            }
+                                                                            placeholder="Pick a date"
+                                                                        />
+                                                                        <InputError message={endError} />
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="space-y-2">
+                                                                    <Label className="text-xs">Difficulty Level</Label>
                                                                     <div className="grid grid-cols-3 gap-2 max-w-sm">
                                                                         {[
                                                                             { val: 1, label: 'Easy', color: 'text-green-500' },
@@ -591,128 +605,24 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                                                         )} />
                                                                                     ))}
                                                                                 </div>
-                                                                                <span className="text-xs font-bold uppercase tracking-tighter">{opt.label}</span>
+                                                                                <span className="text-xs font-bold uppercase">{opt.label}</span>
                                                                             </button>
                                                                         ))}
                                                                     </div>
                                                                 </div>
                                                             </div>
-                                                            <InputError
-                                                                message={form.errors[`exam_dates.${subject}`] as string}
-                                                            />
-                                                            <InputError
-                                                                message={form.errors[`subject_difficulties.${subject}`] as string}
-                                                            />
-                                                        </div>
-                                                    ))}
-
-                                                    {/* Session Duration (Optional) */}
-                                                    <div className="space-y-3 pt-2 border-t border-border/50">
-                                                        <div className="space-y-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <Timer className="size-4 text-muted-foreground" />
-                                                                <Label className="text-sm font-medium">Session Duration <span className="text-xs font-normal text-muted-foreground">(Optional)</span></Label>
-                                                            </div>
-                                                            <p className="text-xs text-muted-foreground">
-                                                                Set preferred session length per subject. Leave empty to let AI decide.
-                                                            </p>
-                                                        </div>
-                                                        {form.data.subjects.map((subject) => {
-                                                            const duration = form.data.subject_session_durations?.[subject];
-                                                            const hasCustomDuration = duration?.min || duration?.max;
-                                                            return (
-                                                                <div key={`duration-${subject}`} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/50">
-                                                                    <div className="space-y-0.5">
-                                                                        <Label className="text-sm font-semibold">{subject}</Label>
-                                                                        <p className="text-xs text-muted-foreground">
-                                                                            {hasCustomDuration ? `${duration?.min || 30}-${duration?.max || 60} min` : 'AI decides (30-90 min)'}
-                                                                        </p>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-2">
-                                                                        <div className="flex items-center gap-1.5">
-                                                                            <Select
-                                                                                value={duration?.min?.toString() || ''}
-                                                                                onValueChange={(value) =>
-                                                                                    form.setData('subject_session_durations', {
-                                                                                        ...form.data.subject_session_durations,
-                                                                                        [subject]: {
-                                                                                            ...form.data.subject_session_durations?.[subject],
-                                                                                            min: parseInt(value),
-                                                                                            max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
-                                                                                        },
-                                                                                    })
-                                                                                }
-                                                                            >
-                                                                                <SelectTrigger className="w-24">
-                                                                                    <SelectValue placeholder="Min" />
-                                                                                </SelectTrigger>
-                                                                                <SelectContent>
-                                                                                    {[15, 30, 45, 60, 75, 90].map((min) => (
-                                                                                        <SelectItem key={min} value={min.toString()}>
-                                                                                            {min} min
-                                                                                        </SelectItem>
-                                                                                    ))}
-                                                                                </SelectContent>
-                                                                            </Select>
-                                                                            <span className="text-sm text-muted-foreground">to</span>
-                                                                            <Select
-                                                                                value={duration?.max?.toString() || ''}
-                                                                                onValueChange={(value) =>
-                                                                                    form.setData('subject_session_durations', {
-                                                                                        ...form.data.subject_session_durations,
-                                                                                        [subject]: {
-                                                                                            ...form.data.subject_session_durations?.[subject],
-                                                                                            min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
-                                                                                            max: parseInt(value),
-                                                                                        },
-                                                                                    })
-                                                                                }
-                                                                            >
-                                                                                <SelectTrigger className="w-24">
-                                                                                    <SelectValue placeholder="Max" />
-                                                                                </SelectTrigger>
-                                                                                <SelectContent>
-                                                                                    {[15, 30, 45, 60, 75, 90, 120].map((max) => (
-                                                                                        <SelectItem key={max} value={max.toString()}>
-                                                                                            {max} min
-                                                                                        </SelectItem>
-                                                                                    ))}
-                                                                                </SelectContent>
-                                                                            </Select>
-                                                                        </div>
-                                                                        {hasCustomDuration && (
-                                                                            <button
-                                                                                type="button"
-                                                                                className="p-1 text-muted-foreground hover:text-destructive transition-colors"
-                                                                                onClick={() => {
-                                                                                    const newDurations = { ...form.data.subject_session_durations };
-                                                                                    delete newDurations[subject];
-                                                                                    form.setData('subject_session_durations', newDurations);
-                                                                                }}
-                                                                            >
-                                                                                <X className="size-4" />
-                                                                            </button>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            );
-                                                        })}
-                                                    </div>
-
-                                                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                                                        <div className="flex items-start gap-3">
-                                                            <Target className="mt-0.5 size-5" />
-                                                            <div className="space-y-1">
-                                                                <div className="font-medium">
-                                                                    Why we ask
-                                                                </div>
-                                                                <div className="text-muted-foreground">
-                                                                    If two exams are close together, we'll ramp up earlier.
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                        );
+                                                    })}
                                                 </div>
+
+                                                <InputError
+                                                    message={
+                                                        (form.errors as Record<string, string | undefined>).subject_dates ||
+                                                        (hasMissingDates
+                                                            ? 'Set a start and end date for every subject to continue.'
+                                                            : undefined)
+                                                    }
+                                                />
 
                                                 <div className="flex items-center justify-between">
                                                     <Button
@@ -725,7 +635,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
                                                     <Button
                                                         type="button"
-                                                        disabled={form.processing}
+                                                        disabled={form.processing || (step === 2 && hasMissingDates)}
                                                         onClick={next}
                                                     >
                                                         Next
@@ -734,176 +644,126 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                             </div>
                                         ) : null}
 
-                                        {step === 4 ? (
+                                        {/* STEP 3: Session Durations (Optional) + Timezone */}
+                                        {step === 3 ? (
                                             <div className="space-y-6">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2">
-                                                        <Clock className="size-5" />
+                                                        <Timer className="size-5" />
                                                         <h3 className="text-lg font-semibold">
-                                                            Daily study hours
+                                                            Preferences
                                                         </h3>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        A realistic number helps the AI create a plan you can stick to.
+                                                        Optional: Customize session durations and set your timezone
                                                     </p>
                                                 </div>
 
-                                                <div className="space-y-4">
-                                                    <div className="grid gap-2">
-                                                        <Label htmlFor="daily_study_hours">
-                                                            Hours per day
-                                                        </Label>
-
-                                                        <Select
-                                                            value={form.data.daily_study_hours?.toString() || '2'}
-                                                            onValueChange={(value) =>
-                                                                form.setData('daily_study_hours', Number(value))
-                                                            }
-                                                        >
-                                                            <SelectTrigger className="w-32">
-                                                                <SelectValue placeholder="Select hours" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {[1, 2, 3, 4, 5, 6].map((hour) => (
-                                                                    <SelectItem key={hour} value={hour.toString()}>
-                                                                        {hour} {hour === 1 ? 'hour' : 'hours'}
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-
-                                                    <div className="space-y-4 pt-4 border-t border-border">
-                                                        <div className="space-y-1">
-                                                            <Label className="text-sm font-medium">When are you most focused?</Label>
-                                                            <p className="text-xs text-muted-foreground">Neuron AI will schedule intense tasks during these hours.</p>
-                                                        </div>
-
-                                                        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                                                            {[
-                                                                { id: 'morning', label: 'Morning', icon: <Sunrise className="size-4" />, desc: '6am - 12pm' },
-                                                                { id: 'afternoon', label: 'Afternoon', icon: <Sun className="size-4" />, desc: '12pm - 5pm' },
-                                                                { id: 'evening', label: 'Evening', icon: <Sunset className="size-4" />, desc: '5pm - 9pm' },
-                                                                { id: 'night', label: 'Night', icon: <Moon className="size-4" />, desc: '9pm - 2am' },
-                                                            ].map((peak) => (
-                                                                <button
-                                                                    key={peak.id}
-                                                                    type="button"
-                                                                    onClick={() => form.setData('productivity_peak', peak.id)}
-                                                                    className={cn(
-                                                                        "flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all",
-                                                                        form.data.productivity_peak === peak.id
-                                                                            ? "bg-primary/10 border-primary ring-1 ring-primary shadow-sm"
-                                                                            : "bg-background border-border hover:border-primary/50"
+                                                {/* Session Durations */}
+                                                <div className="space-y-3">
+                                                    <Label className="text-sm font-medium">Session Duration <span className="text-xs font-normal text-muted-foreground">(Optional)</span></Label>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Set preferred session length per subject. Leave empty to let AI decide (up to your daily limit).
+                                                    </p>
+                                                    {form.data.subjects.map((subject) => {
+                                                        const duration = form.data.subject_session_durations?.[subject];
+                                                        const hasCustomDuration = duration?.min || duration?.max;
+                                                        return (
+                                                            <div key={`duration-${subject}`} className="flex items-center justify-between p-3 rounded-xl border border-border bg-card/50">
+                                                                <div className="space-y-0.5">
+                                                                    <Label className="text-sm font-semibold">{subject}</Label>
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {hasCustomDuration ? `${formatDuration(duration?.min || 30)}-${formatDuration(duration?.max || 60)}` : `AI decides (based on your goal)`}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="flex items-center gap-2">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <Select
+                                                                            value={duration?.min?.toString() || ''}
+                                                                            onValueChange={(value) =>
+                                                                                form.setData('subject_session_durations', {
+                                                                                    ...form.data.subject_session_durations,
+                                                                                    [subject]: {
+                                                                                        ...form.data.subject_session_durations?.[subject],
+                                                                                        min: parseInt(value),
+                                                                                        max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <SelectTrigger className="w-24">
+                                                                                <SelectValue placeholder="Min" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {[15, 30, 45, 60, 75, 90].map((min) => (
+                                                                                    <SelectItem key={min} value={min.toString()}>
+                                                                                        {formatDuration(min)}
+                                                                                    </SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                        <span className="text-sm text-muted-foreground">to</span>
+                                                                        <Select
+                                                                            value={duration?.max?.toString() || ''}
+                                                                            onValueChange={(value) =>
+                                                                                form.setData('subject_session_durations', {
+                                                                                    ...form.data.subject_session_durations,
+                                                                                    [subject]: {
+                                                                                        ...form.data.subject_session_durations?.[subject],
+                                                                                        min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
+                                                                                        max: parseInt(value),
+                                                                                    },
+                                                                                })
+                                                                            }
+                                                                        >
+                                                                            <SelectTrigger className="w-24">
+                                                                                <SelectValue placeholder="Max" />
+                                                                            </SelectTrigger>
+                                                                            <SelectContent>
+                                                                                {[15, 30, 45, 60, 75, 90, 120, 150, 180, 210, 240].map((max) => (
+                                                                                    <SelectItem key={max} value={max.toString()}>
+                                                                                        {formatDuration(max)}
+                                                                                    </SelectItem>
+                                                                                ))}
+                                                                            </SelectContent>
+                                                                        </Select>
+                                                                    </div>
+                                                                    {hasCustomDuration && (
+                                                                        <button
+                                                                            type="button"
+                                                                            className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                                                                            onClick={() => {
+                                                                                const newDurations = { ...form.data.subject_session_durations };
+                                                                                delete newDurations[subject];
+                                                                                form.setData('subject_session_durations', newDurations);
+                                                                            }}
+                                                                        >
+                                                                            <X className="size-4" />
+                                                                        </button>
                                                                     )}
-                                                                >
-                                                                    <div className={cn(
-                                                                        "p-1.5 rounded-lg",
-                                                                        form.data.productivity_peak === peak.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                                                                    )}>
-                                                                        {peak.icon}
-                                                                    </div>
-                                                                    <div className="text-center">
-                                                                        <div className="text-xs font-bold">{peak.label}</div>
-                                                                        <div className="text-[10px] text-muted-foreground">{peak.desc}</div>
-                                                                    </div>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                        <InputError message={form.errors.productivity_peak} />
-                                                    </div>
-
-                                                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                                                        <div className="flex items-start gap-3">
-                                                            <Compass className="mt-0.5 size-5" />
-                                                            <div className="space-y-1">
-                                                                <div className="font-medium">
-                                                                    Why we ask
-                                                                </div>
-                                                                <div className="text-muted-foreground">
-                                                                    We’ll spread sessions across the week instead of cramming.
                                                                 </div>
                                                             </div>
-                                                        </div>
-                                                    </div>
+                                                        );
+                                                    })}
                                                 </div>
 
-                                                <div className="flex items-center justify-between">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        asChild
-                                                    >
-                                                        <a href={backHref}>Back</a>
-                                                    </Button>
-
-                                                    <Button
-                                                        type="button"
-                                                        disabled={form.processing}
-                                                        onClick={next}
-                                                    >
-                                                        Next
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ) : null}
-
-                                        {step === 5 ? (
-                                            <div className="space-y-6">
-                                                <div className="space-y-2">
-                                                    <div className="flex items-center gap-2">
-                                                        <Target className="size-5" />
-                                                        <h3 className="text-lg font-semibold">
-                                                            Study goal
-                                                        </h3>
-                                                    </div>
-                                                    <p className="text-sm text-muted-foreground">
-                                                        What's your main objective? This helps set the right study intensity.
+                                                {/* Timezone */}
+                                                <div className="space-y-3">
+                                                    <Label htmlFor="timezone" className="text-sm font-medium">
+                                                        Timezone
+                                                    </Label>
+                                                    <Input
+                                                        id="timezone"
+                                                        value={form.data.timezone}
+                                                        onChange={(e) => form.setData('timezone', e.target.value)}
+                                                        placeholder="Asia/Yangon"
+                                                        className="bg-muted/30"
+                                                    />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        <Compass className="size-3 inline mr-1" />
+                                                        Helps us schedule reminders at the right local time
                                                     </p>
-                                                </div>
-
-                                                <div className="space-y-4">
-                                                    <div className="grid gap-3 md:grid-cols-2">
-                                                        <ChoiceCard
-                                                            title="Build strong foundation"
-                                                            description="Focus on core concepts and steady progress"
-                                                            selected={form.data.study_goal === 'Build strong foundation'}
-                                                            icon={<CheckCircle2 className="size-5" />}
-                                                            onClick={() => form.setData('study_goal', 'Build strong foundation')}
-                                                        />
-                                                        <ChoiceCard
-                                                            title="Achieve top performance"
-                                                            description="Deep understanding with intensive practice"
-                                                            selected={form.data.study_goal === 'Achieve top performance'}
-                                                            icon={<Target className="size-5" />}
-                                                            onClick={() => form.setData('study_goal', 'Achieve top performance')}
-                                                        />
-                                                    </div>
-                                                    <InputError message={form.errors.study_goal} />
-                                                </div>
-
-                                                <div className="pt-4 border-t border-border">
-                                                    <div className="grid gap-4 md:grid-cols-2 items-center">
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="timezone" className="text-sm font-medium">
-                                                                Timezone
-                                                            </Label>
-                                                            <Input
-                                                                id="timezone"
-                                                                value={form.data.timezone}
-                                                                onChange={(e) => form.setData('timezone', e.target.value)}
-                                                                placeholder="Asia/Yangon"
-                                                                className="bg-muted/30"
-                                                            />
-                                                            <InputError message={form.errors.timezone} />
-                                                        </div>
-                                                        <div className="rounded-lg bg-orange-500/5 border border-orange-500/10 p-3 flex gap-3 text-xs">
-                                                            <Compass className="size-4 text-orange-500 shrink-0" />
-                                                            <div className="text-muted-foreground leading-relaxed">
-                                                                Timezone lets us schedule reminders at the right local time to avoid burnout.
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                    <InputError message={form.errors.timezone} />
                                                 </div>
 
                                                 <div className="flex items-center justify-between">
@@ -926,7 +786,8 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                             </div>
                                         ) : null}
 
-                                        {step === 6 ? (
+                                        {/* STEP 4: Confirmation */}
+                                        {step === 4 ? (
                                             <div className="space-y-6">
                                                 <div className="space-y-2">
                                                     <div className="flex items-center gap-2">
@@ -936,101 +797,63 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                                                         </h3>
                                                     </div>
                                                     <p className="text-sm text-muted-foreground">
-                                                        Review your details. When you submit, we’ll take you to your
-                                                        dashboard.
+                                                        Review your details before we generate your personalized plan
                                                     </p>
                                                 </div>
 
-                                                <div className="space-y-4 text-sm">
-                                                    <div className="rounded-lg border border-border bg-muted/30 p-4">
-                                                        <div className="space-y-2">
-                                                            <div className="font-medium">
-                                                                Summary
-                                                            </div>
-                                                            <div className="text-muted-foreground">
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Subjects:
-                                                                    </span>{' '}
-                                                                    {form.data.subjects.join(', ') ||
-                                                                        '—'}
-                                                                </div>
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Daily hours:
-                                                                    </span>{' '}
-                                                                    {form.data.daily_study_hours || '—'}{' '}
-                                                                    <span className="text-muted-foreground">
-                                                                        ({form.data.productivity_peak.charAt(0).toUpperCase() + form.data.productivity_peak.slice(1)} focus)
-                                                                    </span>
-                                                                </div>
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Goal:
-                                                                    </span>{' '}
-                                                                    {form.data.study_goal ||
-                                                                        '—'}
-                                                                </div>
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Subject priorities:
-                                                                    </span>{' '}
-                                                                    {Object.values(form.data.subject_difficulties).filter(v => v === 3).length} Hard,{' '}
-                                                                    {Object.values(form.data.subject_difficulties).filter(v => v === 2).length} Medium
-                                                                </div>
-                                                                {Object.keys(form.data.exam_dates).length > 0 && (
-                                                                    <div>
-                                                                        <span className="font-medium text-foreground">
-                                                                            Exam dates:
-                                                                        </span>{' '}
-                                                                        {Object.entries(form.data.exam_dates)
-                                                                            .filter((entry) => entry[1])
-                                                                            .map(([subject, date]) => `${subject} (${date})`)
-                                                                            .join(', ') || '—'}
-                                                                    </div>
-                                                                )}
-                                                                <div>
-                                                                    <span className="font-medium text-foreground">
-                                                                        Timezone:
-                                                                    </span>{' '}
-                                                                    {form.data.timezone ||
-                                                                        '—'}
-                                                                </div>
+                                                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3 text-sm">
+                                                    <div className="font-medium">Summary</div>
+                                                    <div className="text-muted-foreground space-y-2">
+                                                        <div>
+                                                            <span className="font-medium text-foreground">Subjects:</span>
+                                                            <div className="mt-1 space-y-1 ml-2">
+                                                                {form.data.subjects.map((subject) => {
+                                                                    const days = getDayCount(subject);
+                                                                    const start = form.data.subject_start_dates?.[subject];
+                                                                    const end = form.data.subject_end_dates?.[subject];
+                                                                    return (
+                                                                        <div key={subject} className="flex items-center gap-2">
+                                                                            <span className="text-foreground">{subject}</span>
+                                                                            {days !== null && (
+                                                                                <Badge variant="secondary" className="text-[10px] h-5">
+                                                                                    {days} days
+                                                                                </Badge>
+                                                                            )}
+                                                                            {start && end && (
+                                                                                <span className="text-xs text-muted-foreground">
+                                                                                    ({start} → {end})
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    );
+                                                                })}
                                                             </div>
                                                         </div>
-                                                    </div>
-
-                                                    <label className="flex items-center gap-3">
-                                                        <Checkbox
-                                                            checked={form.data.confirm}
-                                                            onCheckedChange={(v) =>
-                                                                form.setData(
-                                                                    'confirm',
-                                                                    v === true,
-                                                                )
-                                                            }
-                                                        />
-                                                        <span>
-                                                            I confirm these details are correct.
-                                                        </span>
-                                                    </label>
-                                                    <InputError message={form.errors.confirm} />
-
-                                                    <div className="rounded-lg border border-border bg-muted/30 p-4 text-sm">
-                                                        <div className="flex items-start gap-3">
-                                                            <Sparkles className="mt-0.5 size-5" />
-                                                            <div className="space-y-1">
-                                                                <div className="font-medium">
-                                                                    What happens next
-                                                                </div>
-                                                                <div className="text-muted-foreground">
-                                                                    You’ll land on the dashboard, then we can generate your first
-                                                                    plan.
-                                                                </div>
-                                                            </div>
+                                                        <div>
+                                                            <span className="font-medium text-foreground">Daily hours:</span>{' '}
+                                                            {form.data.daily_study_hours || '—'}
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-medium text-foreground">Goal:</span>{' '}
+                                                            {form.data.study_goal || '—'}
+                                                        </div>
+                                                        <div>
+                                                            <span className="font-medium text-foreground">Timezone:</span>{' '}
+                                                            {form.data.timezone || '—'}
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                <label className="flex items-center gap-3">
+                                                    <Checkbox
+                                                        checked={form.data.confirm}
+                                                        onCheckedChange={(v) =>
+                                                            form.setData('confirm', v === true)
+                                                        }
+                                                    />
+                                                    <span>I confirm these details are correct.</span>
+                                                </label>
+                                                <InputError message={form.errors.confirm} />
 
                                                 <div className="flex items-center justify-between">
                                                     <Button
@@ -1043,10 +866,10 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
 
                                                     <Button
                                                         type="button"
-                                                        disabled={form.processing}
+                                                        disabled={form.processing || !form.data.confirm}
                                                         onClick={next}
                                                     >
-                                                        Finish
+                                                        {form.processing ? 'Creating...' : 'Create My Plan'}
                                                     </Button>
                                                 </div>
                                             </div>
@@ -1057,7 +880,7 @@ export default function OnboardingWizard({ step, totalSteps, onboarding }: Props
                         </div>
                     </div>
                 </div>
-            </OnboardingLayout >
+            </OnboardingLayout>
         </>
     );
 }

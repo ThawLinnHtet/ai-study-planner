@@ -18,10 +18,13 @@ class Session
     #[SchemaProperty(title: 'Focus Level', description: 'Intensity level required: low, medium, or high', required: true)]
     public string $focus_level;
 
-    #[SchemaProperty(title: 'Key Topics', description: 'Key concepts for this session', required: true)]
+    #[SchemaProperty(title: 'Key Topics', description: 'Major concepts or high-level milestones for this session (3-4 items)', required: true)]
     public array $key_topics = [];
 
-    #[SchemaProperty(title: 'Resources', description: 'Recommended external resources for this session', required: true)]
+    #[SchemaProperty(title: 'Sub Topics', description: 'Granular, specific sub-concepts or technical details to cover (5-8 items)', required: true)]
+    public array $sub_topics = [];
+
+    #[SchemaProperty(title: 'Resources', description: 'Recommended external resources. ONLY include verified, direct URLs (YouTube, Khan Academy, Wikipedia, documentation). If unsure of a direct URL, generate a YouTube search URL in the format: https://www.youtube.com/results?search_query=[subject+topic+tutorial]', required: true)]
     public array $resources = [];
 }
 

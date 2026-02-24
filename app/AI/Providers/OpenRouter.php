@@ -21,6 +21,12 @@ class OpenRouter extends OpenAI
         if ($this->model === 'google/gemini-2.0-flash') {
             $this->model = 'google/gemini-2.0-flash-001';
         }
+
+        // Default to a generous 120s timeout for complex AI operations (plans, curricula)
+        if ($this->httpOptions === null) {
+            $this->httpOptions = new \NeuronAI\Providers\HttpClientOptions(timeout: 120.0, connectTimeout: 10.0);
+        }
+
         parent::__construct(
             key: $this->key,
             model: $this->model,

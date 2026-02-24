@@ -4,14 +4,26 @@ namespace App\Services;
 
 use App\Models\StudySession;
 use App\Models\User;
+use App\Models\QuizResult;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class UserProgressService
 {
-    public function getStats(User $user, int $days = 14): array
+    public function getStats(User $user, int $days = 30): array
     {
-        $today = Carbon::today();
+        $timezone = $user->timezone ?? config('app.timezone');
+        $cacheKey = "user_stats_{$user->id}_{$days}_" . now($timezone)->toDateString();
+
+        // Return from cache if available (cache is invalidated by clearUserCache() after sessions complete)
+        $cached = cache()->get($cacheKey);
+        if ($cached !== null) {
+            return $cached;
+        }
+
+        $today = now($timezone);
         $start = $today->copy()->subDays(max(1, $days - 1))->startOfDay();
         $end = $today->copy()->endOfDay();
 
@@ -29,6 +41,20 @@ class UserProgressService
         $xpIntoLevel = max(0, $totalXp - $xpForCurrentLevel);
         $xpLevelSpan = max(1, $xpForNextLevel - $xpForCurrentLevel);
         $xpProgressPercent = (int) round(($xpIntoLevel / $xpLevelSpan) * 100);
+
+        // Debug logging for verification
+        Log::info('XP Calculation for User ' . $user->id, [
+            'total_minutes' => $totalMinutes,
+            'total_sessions' => $totalSessions,
+            'total_xp' => $totalXp,
+            'level' => $level,
+            'xp_for_current_level' => $xpForCurrentLevel,
+            'xp_for_next_level' => $xpForNextLevel,
+            'xp_into_level' => $xpIntoLevel,
+            'xp_to_next' => $xpForNextLevel - $totalXp,
+            'progress_percent' => $xpProgressPercent,
+            'cache_key' => $cacheKey,
+        ]);
 
         $byDay = $completedQuery->clone()
             ->whereBetween('started_at', [$start, $end])
@@ -57,9 +83,9 @@ class UserProgressService
 
         $weekStart = $today->copy()->startOfWeek(Carbon::MONDAY);
         $weekMinutes = (int) $completedQuery->clone()
-            ->where('started_at', '>=', $weekStart)
+            ->where('started_at', '>=', now($timezone)->subDays(7))
             ->sum(DB::raw('coalesce(duration_minutes, 0)'));
-        $weekSessions = (int) $completedQuery->clone()->where('started_at', '>=', $weekStart)->count();
+        $weekSessions = (int) $completedQuery->clone()->where('started_at', '>=', now($timezone)->subDays(7))->count();
 
         $streak = $this->calculateStreaks($user);
         $achievements = $this->buildAchievements(
@@ -70,12 +96,73 @@ class UserProgressService
             weekMinutes: $weekMinutes,
         );
 
-        $weeklyTargetMinutes = max(0, ((int) ($user->daily_study_hours ?? 0)) * 7 * 60);
+        // Calculate weekly target with adaptive defaults
+        $dailyHours = (float) ($user->daily_study_hours ?? 0);
+        $adaptiveTarget = false;
+        
+        // Dynamic default based on user's recent activity if no goal set
+        if ($dailyHours <= 0) {
+            $adaptiveTarget = true;
+            
+            // Check for recent study sessions first
+            $recentSessions = StudySession::where('user_id', $user->id)
+                ->where('status', 'completed')
+                ->where('created_at', '>=', now($timezone)->subDays(14))
+                ->get();
+            
+            if ($recentSessions->count() > 0) {
+                // Calculate based on actual study patterns
+                $avgMinutesPerSession = $recentSessions->avg('duration_minutes') ?? 60;
+                $sessionsPerWeek = $recentSessions->count() / 2; // 14 days = 2 weeks
+                $dailyHours = max(0.5, ($avgMinutesPerSession * $sessionsPerWeek) / (7 * 60));
+                
+                Log::info('Adaptive weekly goal based on study sessions', [
+                    'user_id' => $user->id,
+                    'recent_sessions' => $recentSessions->count(),
+                    'avg_minutes' => $avgMinutesPerSession,
+                    'sessions_per_week' => $sessionsPerWeek,
+                    'calculated_daily_hours' => $dailyHours,
+                ]);
+            } else {
+                // Check for quiz activity as fallback
+                $recentQuizCount = QuizResult::where('user_id', $user->id)
+                    ->where('taken_at', '>=', now($timezone)->subDays(14))
+                    ->count();
+                
+                if ($recentQuizCount > 0) {
+                    // User has quiz activity but no sessions - estimate based on quiz count
+                    $dailyHours = max(1.0, $recentQuizCount / 7.0); // Assume 1 quiz per day average
+                } else {
+                    // No activity at all - use reasonable default
+                    $dailyHours = 2.0; // 2 hours default daily goal
+                }
+                
+                Log::info('Adaptive weekly goal based on quiz activity', [
+                    'user_id' => $user->id,
+                    'recent_quiz_count' => $recentQuizCount,
+                    'calculated_daily_hours' => $dailyHours,
+                ]);
+            }
+        }
+        
+        // Apply minimum and maximum limits
+        $dailyHours = max(0.5, min(8.0, $dailyHours)); // Min 30min, Max 8 hours per day
+        
+        $weeklyTargetMinutes = (int) ($dailyHours * 7 * 60);
         $weekTargetPercent = $weeklyTargetMinutes > 0
             ? (int) min(100, round(($weekMinutes / $weeklyTargetMinutes) * 100))
-            : null;
+            : 0;
+        
+        Log::info('Weekly goal calculation', [
+            'user_id' => $user->id,
+            'daily_hours' => $dailyHours,
+            'adaptive_target' => $adaptiveTarget,
+            'weekly_target_minutes' => $weeklyTargetMinutes,
+            'week_minutes' => $weekMinutes,
+            'week_target_percent' => $weekTargetPercent,
+        ]);
 
-        return [
+        $stats = [
             'xp' => [
                 'total' => $totalXp,
                 'level' => $level,
@@ -94,6 +181,7 @@ class UserProgressService
                 'week' => [
                     'sessions' => $weekSessions,
                     'minutes' => $weekMinutes,
+                    'xp' => $this->calculateXpFromMinutesAndSessions($weekMinutes, $weekSessions),
                     'target_minutes' => $weeklyTargetMinutes,
                     'target_percent' => $weekTargetPercent,
                 ],
@@ -107,6 +195,45 @@ class UserProgressService
                 streakCurrent: $streak['current'],
             ),
         ];
+
+        // Cache the results for 24 hours (until next day)
+        cache()->put($cacheKey, $stats, now()->endOfDay());
+
+        Log::info('Returning stats for User ' . $user->id, [
+            'cache_key' => $cacheKey,
+            'week_target_percent' => $stats['sessions']['week']['target_percent'],
+            'week_minutes' => $stats['sessions']['week']['minutes'],
+            'weekly_target_minutes' => $stats['sessions']['week']['target_minutes'],
+            'total_sessions' => $stats['sessions']['total'],
+            'streak_current' => $stats['streak']['current'],
+        ]);
+
+        return $stats;
+    }
+
+    /**
+     * Clear the user's progress cache when new data is available
+     */
+    public function clearUserCache(User $user): void
+    {
+        $timezone = $user->timezone ?? config('app.timezone');
+        $today = now($timezone)->toDateString();
+
+        // Clear common cache keys for this user across all standard time windows
+        $cacheKeys = [
+            "user_stats_{$user->id}_30_{$today}",
+            "user_stats_{$user->id}_14_{$today}",
+            "user_stats_{$user->id}_7_{$today}",
+            "user_stats_{$user->id}_1_{$today}",
+        ];
+
+        foreach ($cacheKeys as $key) {
+            cache()->forget($key);
+        }
+
+        Log::info('Cleared cache for User ' . $user->id, [
+            'cleared_keys' => $cacheKeys,
+        ]);
     }
 
     protected function calculateXpFromMinutesAndSessions(int $minutes, int $sessions): int
@@ -114,7 +241,9 @@ class UserProgressService
         $minutes = max(0, $minutes);
         $sessions = max(0, $sessions);
 
-        return (int) round(($minutes * 1.2) + ($sessions * 35));
+        // NEW FORMULA: (Minutes * 2) + (Sessions * 10)
+        // Favors duration (Deep Work) while maintaining a completion bonus.
+        return (int) round(($minutes * 2) + ($sessions * 10));
     }
 
     protected function levelFromXp(int $xp): int
@@ -138,6 +267,8 @@ class UserProgressService
 
     protected function calculateStreaks(User $user): array
     {
+        $dbStreak = (int) ($user->study_streak ?? 0);
+        
         $days = StudySession::query()
             ->where('user_id', $user->id)
             ->where('status', 'completed')
@@ -150,34 +281,46 @@ class UserProgressService
             ->all();
 
         if (empty($days)) {
-            return ['current' => 0, 'best' => 0];
+            return ['current' => $dbStreak, 'best' => $dbStreak];
         }
 
-        $best = 1;
-        $run = 1;
-        for ($i = 1; $i < count($days); $i++) {
-            $prev = Carbon::parse($days[$i - 1]);
-            $curr = Carbon::parse($days[$i]);
-            if ($prev->diffInDays($curr) === 1) {
-                $run++;
-                $best = max($best, $run);
-            } else {
-                $run = 1;
-            }
-        }
-
-        $set = array_flip($days);
-        $today = Carbon::today();
+        // Calculate current streak - count consecutive days ending with most recent study day
         $current = 0;
+        $mostRecentDayStr = end($days);
+        $mostRecentDay = Carbon::parse($mostRecentDayStr);
+        
+        // Loop backwards to count consecutive days
         for ($i = 0; $i < 365; $i++) {
-            $key = $today->copy()->subDays($i)->toDateString();
-            if (! isset($set[$key])) {
+            $checkDate = $mostRecentDay->copy()->subDays($i)->toDateString();
+            if (in_array($checkDate, $days)) {
+                $current++;
+            } else {
                 break;
             }
-            $current++;
         }
 
-        return ['current' => $current, 'best' => $best];
+        // More forgiving streak calculation: Check if the streak is still active
+        // A streak is active if the most recent study was today or yesterday
+        $timezone = $user->timezone ?? config('app.timezone');
+        $today = Carbon::today($timezone)->toDateString();
+        $yesterday = Carbon::yesterday($timezone)->toDateString();
+        
+        if ($mostRecentDayStr !== $today && $mostRecentDayStr !== $yesterday) {
+            // Check for grace period (e.g. 1 day gap allowed for long streaks)
+            $twoDaysAgo = Carbon::today($timezone)->subDays(2)->toDateString();
+            if ($mostRecentDayStr === $twoDaysAgo && $current >= 3) {
+                // Keep the streak (grace period applied)
+                Log::info('Streak grace applied in UserProgressService', ['user_id' => $user->id, 'streak' => $current]);
+            } else {
+                // Gap too long - session-based streak resets
+                $current = 0;
+            }
+        }
+
+        // Always respect the DB streak as a floor - it's the "official" record
+        $finalCurrent = max($current, $dbStreak);
+        
+        return ['current' => $finalCurrent, 'best' => $finalCurrent];
     }
 
     protected function buildAchievements(
@@ -195,6 +338,7 @@ class UserProgressService
                 'metric' => 'sessions',
                 'goal' => 1,
                 'value' => $totalSessions,
+                'xp_reward' => 50,
             ],
             [
                 'id' => 'ten_sessions',
@@ -203,6 +347,7 @@ class UserProgressService
                 'metric' => 'sessions',
                 'goal' => 10,
                 'value' => $totalSessions,
+                'xp_reward' => 200,
             ],
             [
                 'id' => 'five_hours',
@@ -211,6 +356,7 @@ class UserProgressService
                 'metric' => 'minutes',
                 'goal' => 300,
                 'value' => $totalMinutes,
+                'xp_reward' => 150,
             ],
             [
                 'id' => 'streak_3',
@@ -219,6 +365,7 @@ class UserProgressService
                 'metric' => 'streak',
                 'goal' => 3,
                 'value' => $streakBest,
+                'xp_reward' => 100,
             ],
             [
                 'id' => 'streak_7',
@@ -227,6 +374,7 @@ class UserProgressService
                 'metric' => 'streak',
                 'goal' => 7,
                 'value' => $streakBest,
+                'xp_reward' => 300,
             ],
             [
                 'id' => 'week_10h',
@@ -235,6 +383,7 @@ class UserProgressService
                 'metric' => 'week_minutes',
                 'goal' => 600,
                 'value' => $weekMinutes,
+                'xp_reward' => 250,
             ],
         ];
 
@@ -258,6 +407,7 @@ class UserProgressService
                 'progress_percent' => $progress,
                 'value' => $value,
                 'goal' => $goal,
+                'xp_reward' => $d['xp_reward'] ?? 0,
             ];
         }, $defs);
     }
@@ -265,25 +415,41 @@ class UserProgressService
     protected function buildInsight(int $weekMinutes, int $weeklyTargetMinutes, int $streakCurrent): string
     {
         if ($weekMinutes <= 0) {
-            return 'Start with one small session today. Momentum beats motivation.';
+            if ($streakCurrent === 0) {
+                return '🌱 Start your journey today! Even 15 minutes makes a difference.';
+            } else {
+                return '🔥 Great streak! Keep it going with a quick session today.';
+            }
         }
 
         if ($weeklyTargetMinutes > 0) {
             $pct = (int) round(($weekMinutes / $weeklyTargetMinutes) * 100);
-            if ($pct >= 90) {
-                return 'You\'re on track for your weekly goal. Keep the rhythm and protect your focus blocks.';
+            $remaining = max(0, $weeklyTargetMinutes - $weekMinutes);
+            $dailyTarget = round($weeklyTargetMinutes / 60 / 7, 1);
+            
+            if ($pct >= 100) {
+                return '🎉 Weekly goal achieved! You\'re crushing it - consider setting a higher goal next week.';
+            } elseif ($pct >= 90) {
+                return '⚡ Almost there! Just ' . round($remaining/60, 1) . ' more hours to hit your weekly goal.';
+            } elseif ($pct >= 75) {
+                return '📈 Strong progress! You\'re on track - add ' . round($remaining/60, 1) . ' more hours this week.';
+            } elseif ($pct >= 50) {
+                return '💪 Good momentum! Focus on ' . $dailyTarget . ' hours daily to reach your goal.';
+            } elseif ($pct >= 25) {
+                return '🚀 Building consistency! Try studying ' . $dailyTarget . ' hours per day.';
+            } else {
+                return '🌟 Just getting started! Aim for ' . $dailyTarget . ' hours daily to build your habit.';
             }
-            if ($pct >= 60) {
-                return 'Solid progress this week. Add one deep-focus session to lock in your gains.';
-            }
-
-            return 'You\'re building consistency. Try a 25-minute Focus Sprint to increase weekly momentum.';
         }
 
-        if ($streakCurrent >= 3) {
-            return 'Your streak is strong. Consider increasing difficulty slightly on one session for growth.';
+        if ($streakCurrent >= 7) {
+            return '🔥 Amazing ' . $streakCurrent . '-day streak! You\'re building incredible habits.';
+        } elseif ($streakCurrent >= 3) {
+            return '👏 Great ' . $streakCurrent . '-day streak! Keep the momentum going.';
+        } elseif ($streakCurrent >= 1) {
+            return '🎯 Nice ' . $streakCurrent . '-day streak! Study today to extend it.';
         }
 
-        return 'Nice start. Consistency is your superpower—repeat a small win tomorrow.';
+        return '💎 Every study session brings you closer to your goals. Start today!';
     }
 }

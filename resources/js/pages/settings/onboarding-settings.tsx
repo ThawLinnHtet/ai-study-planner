@@ -12,19 +12,25 @@ import {
     Moon,
     CalendarDays,
     Timer,
-    Target
+    Target,
+    Settings as SettingsIcon,
+    Compass as CompassIcon,
+    Lightbulb
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
-import { toast } from '@/hooks/use-toast';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { DatePicker } from '@/components/ui/date-picker';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import InputError from '@/components/input-error';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { SimpleAutocomplete } from '@/components/ui/simple-autocomplete';
+import { toast } from '@/hooks/use-toast';
 import { useSimpleSubjects } from '@/hooks/useSimpleSubjects';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem, SharedData } from '@/types';
@@ -45,20 +51,34 @@ interface User {
     name: string;
     email: string;
     subjects: string[];
-    exam_dates: Record<string, string | null>;
     subject_difficulties: Record<string, number>;
     subject_session_durations: Record<string, { min: number; max: number }>;
-    daily_study_hours: number;
-    productivity_peak: string;
-    study_goal: string;
-    timezone: string;
+    subject_start_dates: Record<string, string>;
+    subject_end_dates: Record<string, string>;
+    daily_study_hours: number | null;
+    study_goal: string | null;
+    timezone: string | null;
     onboarding_completed: boolean;
     onboarding_step: number;
+    is_generating_plan?: boolean;
+    generating_status?: string;
+}
+
+interface Enrollment {
+    id: number;
+    subject_name: string;
+    start_date: string;
+    end_date: string;
+    completed_sessions_count: number;
+    current_day: number;
+    total_days: number;
+    progress_percent: number;
 }
 
 interface Props {
     user: User;
     activePlan: unknown;
+    activeEnrollments: Enrollment[];
 }
 
 const parseSubjects = (subjects: unknown): string[] => {
@@ -81,59 +101,111 @@ const parseSubjects = (subjects: unknown): string[] => {
 interface OnboardingFlash {
     success?: string;
     error?: string;
+    info?: string;
+    warning?: string;
     hours_adjusted?: boolean;
     original_hours?: number;
     recommended_hours?: number;
+    onboarding_warning?: {
+        title: string;
+        message: string | string[];
+        recommendations: string[];
+    };
 }
 
-export default function OnboardingSettings({ user }: Props) {
+// Track previously shown flash messages globally to prevent duplicates even with React StrictMode (double-mount)
+export default function OnboardingSettings({ user, activeEnrollments }: Props) {
     const page = usePage<SharedData>();
     const flash = page.props.flash as OnboardingFlash;
-    // Store original values to detect changes
-    const originalValues = useRef({
+
+    // Polling for plan generation
+    useEffect(() => {
+        let interval: any;
+        if (user.is_generating_plan) {
+            interval = setInterval(() => {
+                router.reload({
+                    only: ['user', 'activePlan', 'activeEnrollments']
+                });
+            }, 3000);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [user.is_generating_plan]);
+
+    if (user.is_generating_plan) {
+        return (
+            <AppLayout breadcrumbs={breadcrumbs}>
+                <Head title="Generating Plan..." />
+                <div className="flex flex-col items-center justify-center min-h-[70vh] p-6 text-center space-y-8">
+                    <div className="relative">
+                        <div className="absolute inset-0 bg-primary/20 rounded-full blur-3xl animate-pulse"></div>
+                        <div className="relative bg-white dark:bg-slate-900 p-8 rounded-full shadow-2xl border border-primary/10">
+                            <Brain className="w-20 h-20 text-primary animate-bounce-slow" />
+                            <Lightbulb className="absolute -top-2 -right-2 w-8 h-8 text-amber-400 animate-spin-slow" />
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 max-w-lg">
+                        <h2 className="text-3xl font-black tracking-tight bg-gradient-to-r from-primary to-indigo-600 bg-clip-text text-transparent">
+                            Regenerating Your Plan
+                        </h2>
+                        <p className="text-muted-foreground text-lg leading-relaxed">
+                            {user.generating_status || "Our AI is updating your personalized path based on your new preferences. This usually takes about 20-30 seconds."}
+                        </p>
+                    </div>
+
+                    <div className="w-full max-w-xs space-y-2">
+                        <div className="flex justify-between text-xs font-bold uppercase tracking-widest text-primary/60 px-1">
+                            <div className="flex items-center gap-2">
+                                <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                </span>
+                                <span>Optimization in Progress</span>
+                            </div>
+                            <span className="animate-pulse">Working...</span>
+                        </div>
+                        <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-primary animate-progress-loading"></div>
+                        </div>
+                    </div>
+                </div>
+                <style dangerouslySetInnerHTML={{
+                    __html: `
+                    @keyframes progress-loading {
+                        0% { width: 0; }
+                        50% { width: 70%; }
+                        100% { width: 100%; }
+                    }
+                    .animate-progress-loading {
+                        animation: progress-loading 2s ease-in-out infinite;
+                    }
+                `}} />
+            </AppLayout>
+        );
+    }
+    // Initialize form with fresh user data on every render
+    const formatDuration = (min: number) => {
+        if (!min) return '';
+        if (min < 60) return `${min} min`;
+        const hours = Math.floor(min / 60);
+        const remainingMin = min % 60;
+        return remainingMin === 0 ? `${hours}h` : `${hours}h ${remainingMin}min`;
+    };
+
+    const form = useForm({
         subjects: parseSubjects(user.subjects),
-        exam_dates: user.exam_dates || {},
-        subject_difficulties: user.subject_difficulties || {},
-        subject_session_durations: user.subject_session_durations || {},
+        subject_start_dates: user.subject_start_dates || {},
+        subject_end_dates: user.subject_end_dates || {},
+        subject_difficulties: user.subject_difficulties || {} as Record<string, number>,
+        subject_session_durations: user.subject_session_durations || {} as Record<string, { min: number; max: number }>,
         daily_study_hours: user.daily_study_hours || 2,
-        productivity_peak: user.productivity_peak || 'morning',
         study_goal: user.study_goal || '',
         timezone: user.timezone || '',
+        regenerate_plan: false,
     });
 
-    // Helper to check if any preference changed
-    const hasPreferencesChanged = (): boolean => {
-        const current = form.data;
-        const original = originalValues.current;
-
-        // Check subjects (array comparison)
-        if (JSON.stringify(current.subjects.sort()) !== JSON.stringify(original.subjects.sort())) {
-            return true;
-        }
-
-        // Check exam_dates (object comparison)
-        if (JSON.stringify(current.exam_dates) !== JSON.stringify(original.exam_dates)) {
-            return true;
-        }
-
-        // Check subject_difficulties
-        if (JSON.stringify(current.subject_difficulties) !== JSON.stringify(original.subject_difficulties)) {
-            return true;
-        }
-
-        // Check subject_session_durations
-        if (JSON.stringify(current.subject_session_durations) !== JSON.stringify(original.subject_session_durations)) {
-            return true;
-        }
-
-        // Check simple values
-        if (current.daily_study_hours !== original.daily_study_hours) return true;
-        if (current.productivity_peak !== original.productivity_peak) return true;
-        if (current.study_goal !== original.study_goal) return true;
-        if (current.timezone !== original.timezone) return true;
-
-        return false;
-    };
     // TanStack Query for subjects
     const { allSubjects, addCustomSubject, useSearchSuggestions } = useSimpleSubjects();
     const [subjectInputValue, setSubjectInputValue] = useState('');
@@ -143,28 +215,66 @@ export default function OnboardingSettings({ user }: Props) {
     const { data: searchData } = useSearchSuggestions(subjectInputValue);
     const suggestions = searchData?.subjects || [];
 
-    useEffect(() => {
-        if (flash?.success) {
-            toast.success(flash.success);
+    const getDayCount = (subject: string): number | null => {
+        const start = form.data.subject_start_dates?.[subject];
+        const end = form.data.subject_end_dates?.[subject];
+        if (!start || !end) return null;
+        const startDate = new Date(start);
+        const endDate = new Date(end);
+        if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) return null;
+        const diffTime = endDate.getTime() - startDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        return diffDays > 0 ? diffDays : null;
+    };
+
+    const subjectsMissingDates = useMemo(() => {
+        return form.data.subjects.filter(s => !form.data.subject_start_dates[s] || !form.data.subject_end_dates[s]);
+    }, [form.data.subjects, form.data.subject_start_dates, form.data.subject_end_dates]);
+
+    const hasCoreChanges = useMemo(() => {
+        // Compare current form data with initial user props
+        const initialSubjects = parseSubjects(user.subjects).sort();
+        const currentSubjects = [...form.data.subjects].sort();
+
+        if (JSON.stringify(initialSubjects) !== JSON.stringify(currentSubjects)) return true;
+        if (form.data.daily_study_hours !== (user.daily_study_hours || 2)) return true;
+        if (form.data.study_goal !== (user.study_goal || '')) return true;
+        if (form.data.timezone !== (user.timezone || '')) return true;
+
+        // Check subject-specific core fields
+        for (const s of form.data.subjects) {
+            if (form.data.subject_start_dates[s] !== (user.subject_start_dates?.[s] || '')) return true;
+            if (form.data.subject_end_dates[s] !== (user.subject_end_dates?.[s] || '')) return true;
+            if (form.data.subject_difficulties[s] !== (user.subject_difficulties?.[s] || 2)) return true;
         }
 
-        if (flash?.error) {
+        return false;
+    }, [form.data, user]);
+
+    const flashSignatureRef = useRef<string>('');
+
+    useEffect(() => {
+        if (!flash) return;
+
+        const signature = JSON.stringify(flash);
+        if (signature === flashSignatureRef.current) return;
+        flashSignatureRef.current = signature;
+
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
             toast.error(flash.error);
+        }
+        if (flash.info) {
+            toast.info(flash.info);
+        }
+        if (flash.warning) {
+            toast.warning(flash.warning);
         }
     }, [flash]);
 
-    // Initialize form with fresh user data on every render
-    const form = useForm({
-        subjects: parseSubjects(user.subjects),
-        exam_dates: user.exam_dates || {},
-        subject_difficulties: user.subject_difficulties || {},
-        subject_session_durations: user.subject_session_durations || {},
-        daily_study_hours: user.daily_study_hours || 2,
-        productivity_peak: user.productivity_peak || 'morning',
-        study_goal: user.study_goal || '',
-        timezone: user.timezone || '',
-        regenerate_plan: false,
-    });
+
 
     const addSubject = async (subjectName: string) => {
         if (!form.data.subjects.includes(subjectName)) {
@@ -172,7 +282,6 @@ export default function OnboardingSettings({ user }: Props) {
             const predefinedSubjects = allSubjects || [];
             const isCustomSubject = !predefinedSubjects.includes(subjectName);
 
-            // OPTIMISTIC UPDATE: Update UI immediately
             const newSubjects = [...form.data.subjects, subjectName];
             const newDifficulties = {
                 ...form.data.subject_difficulties,
@@ -180,8 +289,11 @@ export default function OnboardingSettings({ user }: Props) {
             };
 
             // Update form data immediately
-            form.setData('subjects', newSubjects);
-            form.setData('subject_difficulties', newDifficulties);
+            form.setData((prev: any) => ({
+                ...prev,
+                subjects: newSubjects,
+                subject_difficulties: newDifficulties,
+            }));
 
             setSubjectInputValue('');
 
@@ -201,44 +313,63 @@ export default function OnboardingSettings({ user }: Props) {
         }
     };
 
+    // Emotional delete dialog state
+    const [subjectToRemove, setSubjectToRemove] = useState<string | null>(null);
+    const [subjectRemoveInfo, setSubjectRemoveInfo] = useState<Enrollment | null>(null);
+
     const removeSubject = (subject: string) => {
+        // Check if this subject has an active enrollment
+        const enrollment = activeEnrollments.find(
+            (e) => e.subject_name === subject
+        );
+
+        // Always show confirmation now for consistency
+        setSubjectToRemove(subject);
+        setSubjectRemoveInfo(enrollment || null);
+    };
+
+    const doRemoveSubject = (subject: string) => {
         const newSubjects = form.data.subjects.filter((s: string) => s !== subject);
         const newDifficulties = { ...form.data.subject_difficulties };
         delete newDifficulties[subject];
 
-        form.setData('subjects', newSubjects);
-        form.setData('subject_difficulties', newDifficulties);
+        // Also clear dates and durations
+        const newStartDates = { ...form.data.subject_start_dates };
+        const newEndDates = { ...form.data.subject_end_dates };
+        const newDurations = { ...form.data.subject_session_durations };
+        delete newStartDates[subject];
+        delete newEndDates[subject];
+        delete newDurations[subject];
+
+        form.setData({
+            ...form.data,
+            subjects: newSubjects,
+            subject_difficulties: newDifficulties,
+            subject_start_dates: newStartDates,
+            subject_end_dates: newEndDates,
+            subject_session_durations: newDurations,
+        });
 
         // Force re-render
         setSubjectsKey((prev) => prev + 1);
+
+        // Close dialog if open
+        setSubjectToRemove(null);
+        setSubjectRemoveInfo(null);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
 
-        // Only regenerate if preferences actually changed
-        const shouldRegenerate = hasPreferencesChanged();
+        // Only explicitly request regeneration if there are core changes
+        form.transform((data) => ({
+            ...data,
+            regenerate_plan: hasCoreChanges
+        }));
 
-        // Manually create the data object with regenerate_plan set based on changes
-        const submitData = {
-            ...form.data,
-            regenerate_plan: shouldRegenerate
-        };
-
-        // Use router.visit for direct submission with custom data
-        router.put('/settings/onboarding', submitData, {
-            onSuccess: () => {
-                // Show toast after successful save, before redirect
-                if (shouldRegenerate) {
-                    toast.success('Study plan updated successfully!');
-                }
-                // Reset the flag after successful submission
-                form.setData('regenerate_plan', false);
-            },
+        form.put('/settings/onboarding', {
             onError: (errors: Record<string, string>) => {
                 toast.error('Failed to save preferences: ' + Object.values(errors).join(', '));
-                // Reset the flag on error
-                form.setData('regenerate_plan', false);
             }
         });
     };
@@ -265,291 +396,71 @@ export default function OnboardingSettings({ user }: Props) {
                     </div>
                 </div>
 
-                {/* Success/Error Messages */}
-                {flash?.hours_adjusted && (
-                    <Alert>
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertDescription>
-                            <strong>Study hours adjusted:</strong> We adjusted your daily study hours from {flash?.original_hours} to {flash?.recommended_hours} hours for better focus and sustainability.
-                        </AlertDescription>
+                {/* Perfection Grade Alerts */}
+                {flash?.onboarding_warning && (
+                    <Alert className="border-amber-200 bg-amber-50 shadow-sm animate-in fade-in slide-in-from-top-4 duration-500">
+                        <AlertTriangle className="h-5 w-5 text-amber-600" />
+                        <div className="ml-3">
+                            <div className="text-amber-800 font-bold text-sm">
+                                Sustainability Safeguard
+                            </div>
+                            <div className="text-amber-700 mt-1 text-sm leading-relaxed">
+                                {Array.isArray((flash.onboarding_warning as any).message) ? (
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {(flash.onboarding_warning as any).message.map((msg: string, idx: number) => (
+                                            <li key={idx}>{msg}</li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    (flash.onboarding_warning as any).message
+                                )}
+
+                                {(flash.onboarding_warning as any).recommendations && (flash.onboarding_warning as any).recommendations.length > 0 && (
+                                    <div className="mt-3 bg-white/60 rounded-lg p-3 border border-amber-200 shadow-sm">
+                                        <div className="flex items-center gap-1.5 text-[10px] font-bold mb-2 text-amber-900 uppercase tracking-wider">
+                                            <Lightbulb className="size-3 text-amber-600" />
+                                            Assistant Recommendations:
+                                        </div>
+                                        <ul className="space-y-1.5 text-xs">
+                                            {(flash.onboarding_warning as any).recommendations.map((rec: string, idx: number) => (
+                                                <li key={idx} className="flex items-start gap-2">
+                                                    <span className="mt-1.5 h-1 w-1 rounded-full bg-amber-500 shrink-0" />
+                                                    {rec}
+                                                </li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                     </Alert>
                 )}
 
                 <form onSubmit={handleSubmit} className="space-y-8">
-                    {/* Subjects Section */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <BookOpen className="w-5 h-5" />
-                                Subjects & Difficulty
+                    {/* General Preferences Card */}
+                    <Card className="border-primary/20 bg-primary/5">
+                        <CardHeader className="pb-4">
+                            <CardTitle className="flex items-center gap-2 text-primary">
+                                <SettingsIcon className="w-5 h-5" />
+                                General Preferences
                             </CardTitle>
                             <CardDescription>
-                                Add subjects and set their difficulty levels for personalized scheduling
+                                High-level goals and schedule constraints for your entire plan
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            {/* Current Subjects */}
-                            {form.data.subjects && form.data.subjects.length > 0 && (
-                                <div className="space-y-3">
-                                    <Label className="text-sm font-medium">Current Subjects</Label>
-                                    <div className="grid gap-3">
-                                        {form.data.subjects.map((subject: string) => (
-                                            <div key={`${subject}-${subjectsKey}`} className="flex items-center gap-3 p-3 border rounded-lg bg-muted/30">
-                                                <span className="flex-1 font-medium">{subject}</span>
-                                                <div className="flex items-center gap-2">
-                                                    <Label className="text-xs text-muted-foreground">Difficulty:</Label>
-                                                    <Select
-                                                        value={form.data.subject_difficulties[subject]?.toString() || '2'}
-                                                        onValueChange={(value) => updateSubjectDifficulty(subject, parseInt(value))}
-                                                    >
-                                                        <SelectTrigger className="w-28 h-8">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="1">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full bg-green-500"></div>
-                                                                    Easy
-                                                                </div>
-                                                            </SelectItem>
-                                                            <SelectItem value="2">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
-                                                                    Medium
-                                                                </div>
-                                                            </SelectItem>
-                                                            <SelectItem value="3">
-                                                                <div className="flex items-center gap-2">
-                                                                    <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                                                                    Hard
-                                                                </div>
-                                                            </SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => removeSubject(subject)}
-                                                        className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                                    >
-                                                        <X className="w-4 h-4" />
-                                                    </Button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Add New Subject */}
-                            <div className="space-y-2">
-                                <Label className="text-sm font-medium">Add New Subject</Label>
-                                <SimpleAutocomplete
-                                    value={subjectInputValue}
-                                    onValueChange={setSubjectInputValue}
-                                    onSelect={addSubject}
-                                    suggestions={suggestions}
-                                    selectedSubjects={form.data.subjects}
-                                    onRemoveSubject={removeSubject}
-                                    placeholder="Type to search or add a subject..."
-                                    className="w-full"
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                    Start typing to search existing subjects or add a custom one
-                                </p>
-                                {form.errors.subjects && (
-                                    <p className="text-sm text-destructive">{form.errors.subjects}</p>
-                                )}
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Exam Dates Section */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <CalendarDays className="w-5 h-5" />
-                                Exam Dates
-                            </CardTitle>
-                            <CardDescription>
-                                Set exam dates for each subject to prioritize study time
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {form.data.subjects && form.data.subjects.length > 0 ? (
-                                <div className="space-y-3">
-                                    {form.data.subjects.map((subject: string) => (
-                                        <div key={subject} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
-                                            <div className="flex items-center gap-3">
-                                                <BookOpen className="w-4 h-4 text-muted-foreground" />
-                                                <div>
-                                                    <Label htmlFor={`exam-date-${subject}`} className="text-base font-semibold">
-                                                        {subject}
-                                                    </Label>
-                                                    <p className="text-xs text-muted-foreground">When is your exam?</p>
-                                                </div>
-                                            </div>
-                                            <div className="w-55">
-                                                <DatePicker
-                                                    id={`exam-date-${subject}`}
-                                                    value={form.data.exam_dates?.[subject] || null}
-                                                    onChange={(value) =>
-                                                        form.setData('exam_dates', {
-                                                            ...(form.data.exam_dates || {}),
-                                                            [subject]: value,
-                                                        })
-                                                    }
-                                                    placeholder="Pick an exam date"
-                                                />
-                                            </div>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8 text-muted-foreground">
-                                    <CalendarDays className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p>Add subjects first to set their exam dates</p>
-                                </div>
-                            )}
-                            {form.errors.exam_dates && (
-                                <p className="text-sm text-destructive">{form.errors.exam_dates}</p>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Session Duration Section (Optional) */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Timer className="w-5 h-5" />
-                                Session Duration
-                                <span className="text-xs font-normal text-muted-foreground ml-1">(Optional)</span>
-                            </CardTitle>
-                            <CardDescription>
-                                Set preferred session length per subject. Leave empty to let AI decide automatically.
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            {form.data.subjects && form.data.subjects.length > 0 ? (
-                                <div className="space-y-3">
-                                    {form.data.subjects.map((subject: string) => {
-                                        const duration = form.data.subject_session_durations?.[subject];
-                                        const hasCustomDuration = duration?.min || duration?.max;
-                                        return (
-                                            <div key={subject} className="flex items-center justify-between p-3 border rounded-lg bg-muted/30">
-                                                <div className="flex items-center gap-3">
-                                                    <Timer className="w-4 h-4 text-muted-foreground" />
-                                                    <div>
-                                                        <Label className="text-base font-semibold">
-                                                            {subject}
-                                                        </Label>
-                                                        <p className="text-xs text-muted-foreground">
-                                                            {hasCustomDuration ? `${duration?.min || 30}-${duration?.max || 60} min` : 'AI decides (30-90 min)'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Select
-                                                            value={duration?.min?.toString() || ''}
-                                                            onValueChange={(value) =>
-                                                                form.setData('subject_session_durations', {
-                                                                    ...form.data.subject_session_durations,
-                                                                    [subject]: {
-                                                                        ...form.data.subject_session_durations?.[subject],
-                                                                        min: parseInt(value),
-                                                                        max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
-                                                                    },
-                                                                })
-                                                            }
-                                                        >
-                                                            <SelectTrigger className="w-24">
-                                                                <SelectValue placeholder="Min" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {[15, 30, 45, 60, 75, 90].map((min) => (
-                                                                    <SelectItem key={min} value={min.toString()}>
-                                                                        {min} min
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                        <span className="text-sm text-muted-foreground">to</span>
-                                                        <Select
-                                                            value={duration?.max?.toString() || ''}
-                                                            onValueChange={(value) =>
-                                                                form.setData('subject_session_durations', {
-                                                                    ...form.data.subject_session_durations,
-                                                                    [subject]: {
-                                                                        ...form.data.subject_session_durations?.[subject],
-                                                                        min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
-                                                                        max: parseInt(value),
-                                                                    },
-                                                                })
-                                                            }
-                                                        >
-                                                            <SelectTrigger className="w-24">
-                                                                <SelectValue placeholder="Max" />
-                                                            </SelectTrigger>
-                                                            <SelectContent>
-                                                                {[15, 30, 45, 60, 75, 90, 120].map((max) => (
-                                                                    <SelectItem key={max} value={max.toString()}>
-                                                                        {max} min
-                                                                    </SelectItem>
-                                                                ))}
-                                                            </SelectContent>
-                                                        </Select>
-                                                    </div>
-                                                    {hasCustomDuration && (
-                                                        <Button
-                                                            type="button"
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-8 w-8 p-0 text-muted-foreground hover:text-destructive"
-                                                            onClick={() => {
-                                                                const newDurations = { ...form.data.subject_session_durations };
-                                                                delete newDurations[subject];
-                                                                form.setData('subject_session_durations', newDurations);
-                                                            }}
-                                                        >
-                                                            <X className="w-4 h-4" />
-                                                        </Button>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            ) : (
-                                <div className="text-center py-8 text-muted-foreground">
-                                    <Timer className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                                    <p>Add subjects first to set session durations</p>
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
-
-                    {/* Study Schedule Section */}
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2">
-                                <Clock className="w-5 h-5" />
-                                Study Schedule
-                            </CardTitle>
-                            <CardDescription>
-                                Configure your daily study hours and peak productivity times
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <Label htmlFor="daily_study_hours">Daily Study Hours</Label>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Study Hours */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="daily_study_hours" className="flex items-center gap-2">
+                                        <Clock className="w-4 h-4 text-primary" />
+                                        Daily Study Hours
+                                    </Label>
                                     <Select
                                         value={form.data.daily_study_hours.toString()}
                                         onValueChange={(value) => form.setData('daily_study_hours', parseInt(value))}
                                     >
-                                        <SelectTrigger className="w-32">
+                                        <SelectTrigger id="daily_study_hours">
                                             <SelectValue placeholder="Select hours" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -560,116 +471,271 @@ export default function OnboardingSettings({ user }: Props) {
                                             ))}
                                         </SelectContent>
                                     </Select>
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                        Recommended: 2-6 hours for optimal learning
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Limit: 6 hours/day for focus.
                                     </p>
                                 </div>
 
-                                <div>
-                                    <Label className="text-sm font-medium">When are you most focused?</Label>
-                                    <p className="text-xs text-muted-foreground mb-3">AI will schedule intense tasks during these hours.</p>
+                                {/* Study Goal */}
+                                <div className="space-y-2">
+                                    <Label className="flex items-center gap-2">
+                                        <Target className="w-4 h-4 text-primary" />
+                                        Main Objective
+                                    </Label>
+                                    <Select
+                                        value={form.data.study_goal}
+                                        onValueChange={(value) => form.setData('study_goal', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a goal" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Build strong foundation">Build Foundation</SelectItem>
+                                            <SelectItem value="Achieve top performance">Top Performance</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Influences session intensity.
+                                    </p>
+                                </div>
 
-                                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                                        {[
-                                            { id: 'morning', label: 'Morning', icon: <Sunrise className="size-4" />, desc: '6am - 12pm' },
-                                            { id: 'afternoon', label: 'Afternoon', icon: <Sun className="size-4" />, desc: '12pm - 5pm' },
-                                            { id: 'evening', label: 'Evening', icon: <Sunset className="size-4" />, desc: '5pm - 9pm' },
-                                            { id: 'night', label: 'Night', icon: <Moon className="size-4" />, desc: '9pm - 2am' },
-                                        ].map((peak) => (
-                                            <button
-                                                key={peak.id}
-                                                type="button"
-                                                onClick={() => form.setData('productivity_peak', peak.id)}
-                                                className={`flex flex-col items-center justify-center gap-2 p-3 rounded-xl border transition-all ${form.data.productivity_peak === peak.id
-                                                    ? "bg-primary/10 border-primary ring-1 ring-primary shadow-sm"
-                                                    : "bg-background border-border hover:border-primary/50"
-                                                    }`}
-                                            >
-                                                <div className={`p-1.5 rounded-lg ${form.data.productivity_peak === peak.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                                                    }`}>
-                                                    {peak.icon}
-                                                </div>
-                                                <span className="text-xs font-medium">{peak.label}</span>
-                                                <span className="text-xs text-muted-foreground">{peak.desc}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    {form.errors.productivity_peak && (
-                                        <p className="text-sm text-destructive mt-2">{form.errors.productivity_peak}</p>
+                                {/* Timezone */}
+                                <div className="space-y-2">
+                                    <Label htmlFor="timezone" className="flex items-center gap-2">
+                                        <CompassIcon className="w-4 h-4 text-primary" />
+                                        Your Timezone
+                                    </Label>
+                                    <Input
+                                        id="timezone"
+                                        value={form.data.timezone}
+                                        onChange={(e) => form.setData('timezone', e.target.value)}
+                                        placeholder="e.g., Asia/Yangon"
+                                        className="h-10"
+                                    />
+                                    {form.errors.timezone && (
+                                        <p className="text-[10px] text-destructive">{form.errors.timezone}</p>
                                     )}
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    {/* Study Goal Section */}
+                    {/* Subject Management Card */}
                     <Card>
-                        <CardHeader>
+                        <CardHeader className="pb-4">
                             <CardTitle className="flex items-center gap-2">
-                                <Target className="w-5 h-5" />
-                                Study Goal
+                                <BookOpen className="w-5 h-5 text-primary" />
+                                Subject Configuration
                             </CardTitle>
                             <CardDescription>
-                                What's your main objective? This helps set the right study intensity.
+                                Customize each subject. Add/remove subjects and refine their specific details.
                             </CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-4">
-                                    <Label className="text-sm font-medium">Choose Your Goal</Label>
-                                    <div className="space-y-2">
-                                        {[
-                                            { value: 'Build strong foundation', label: 'Build strong foundation', desc: 'Focus on core concepts and steady progress' },
-                                            { value: 'Achieve top performance', label: 'Achieve top performance', desc: 'Deep understanding with intensive practice' }
-                                        ].map((goal) => (
-                                            <div key={goal.value} className="flex items-center space-x-2">
-                                                <Checkbox
-                                                    id={goal.value}
-                                                    checked={form.data.study_goal === goal.value}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            form.setData('study_goal', goal.value);
-                                                        } else {
-                                                            form.setData('study_goal', '');
-                                                        }
-                                                    }}
-                                                />
-                                                <div className="flex-1">
-                                                    <Label htmlFor={goal.value} className="text-sm font-medium">{goal.label}</Label>
-                                                    <p className="text-xs text-muted-foreground">{goal.desc}</p>
-                                                </div>
-                                            </div>
-                                        ))}
+                        <CardContent className="space-y-6">
+                            {/* Add Subject Search */}
+                            <div className="p-4 bg-muted/30 rounded-xl border border-dashed">
+                                <div className="max-w-xl mx-auto space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <Label className="text-sm font-medium">Add New Subject</Label>
+                                        <Badge variant={form.data.subjects.length >= 6 ? "destructive" : "secondary"} className="font-bold">
+                                            {form.data.subjects.length}/6 Subjects
+                                        </Badge>
                                     </div>
-                                    {form.errors.study_goal && (
-                                        <p className="text-sm text-destructive">{form.errors.study_goal}</p>
+                                    <SimpleAutocomplete
+                                        value={subjectInputValue}
+                                        onValueChange={setSubjectInputValue}
+                                        onSelect={addSubject}
+                                        suggestions={suggestions}
+                                        selectedSubjects={form.data.subjects}
+                                        onRemoveSubject={removeSubject}
+                                        placeholder={form.data.subjects.length >= 6 ? "Limit reached (6/6)" : "Search or add a subject..."}
+                                        className="w-full h-11"
+                                        disabled={form.data.subjects.length >= 6}
+                                    />
+                                    {form.data.subjects.length >= 6 && (
+                                        <p className="text-[10px] text-destructive font-medium flex items-center gap-1.5 px-1 animate-pulse">
+                                            <AlertTriangle className="size-3" />
+                                            Subject limit reached. Focus on these 6 for the best results!
+                                        </p>
                                     )}
                                 </div>
-
-                                <div className="space-y-4">
-                                    <div>
-                                        <Label htmlFor="timezone">Timezone</Label>
-                                        <Input
-                                            id="timezone"
-                                            value={form.data.timezone}
-                                            onChange={(e) => form.setData('timezone', e.target.value)}
-                                            placeholder="e.g., Asia/Yangon"
-                                        />
-                                        {form.errors.timezone && (
-                                            <p className="text-sm text-destructive">{form.errors.timezone}</p>
-                                        )}
-                                    </div>
-                                </div>
                             </div>
+
+                            {/* Subjects List */}
+                            {form.data.subjects && form.data.subjects.length > 0 ? (
+                                <div className="grid gap-4">
+                                    {form.data.subjects.map((subject: string) => {
+                                        const startError = (form.errors as Record<string, string | undefined>)[`subject_start_dates.${subject}`];
+                                        const endError = (form.errors as Record<string, string | undefined>)[`subject_end_dates.${subject}`];
+                                        const duration = form.data.subject_session_durations?.[subject];
+                                        const startDate = form.data.subject_start_dates[subject];
+                                        const endDate = form.data.subject_end_dates[subject];
+
+                                        return (
+                                            <div key={`${subject}-${subjectsKey}`} className="overflow-hidden border rounded-xl bg-card shadow-sm group hover:border-primary/30 transition-all">
+                                                <div className="flex items-center justify-between p-4 bg-muted/20 border-b">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 bg-white dark:bg-slate-800 rounded-lg shadow-sm border">
+                                                            <BookOpen className="w-4 h-4 text-primary" />
+                                                        </div>
+                                                        <span className="font-bold text-lg">{subject}</span>
+                                                        {getDayCount(subject) !== null && (
+                                                            <Badge variant="secondary" className="text-xs font-medium">
+                                                                <CalendarDays className="w-3 h-3 mr-1" />
+                                                                {getDayCount(subject)} days
+                                                            </Badge>
+                                                        )}
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="icon"
+                                                        onClick={() => removeSubject(subject)}
+                                                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                                                    >
+                                                        <X className="w-5 h-5" />
+                                                    </Button>
+                                                </div>
+
+                                                <div className="p-4 space-y-6">
+                                                    {/* Row 1: Difficulty and Dates */}
+                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                        {/* Column 1: Difficulty */}
+                                                        <div className="space-y-4">
+                                                            <div className="space-y-1.5">
+                                                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Difficulty</Label>
+                                                                <Select
+                                                                    value={form.data.subject_difficulties[subject]?.toString() || '2'}
+                                                                    onValueChange={(val) => form.setData('subject_difficulties', { ...form.data.subject_difficulties, [subject]: parseInt(val) })}
+                                                                >
+                                                                    <SelectTrigger className="w-full">
+                                                                        <SelectValue placeholder="Select difficulty" />
+                                                                    </SelectTrigger>
+                                                                    <SelectContent>
+                                                                        <SelectItem value="1">🌱 Easy</SelectItem>
+                                                                        <SelectItem value="2">🔥 Medium</SelectItem>
+                                                                        <SelectItem value="3">⚡ Hard</SelectItem>
+                                                                    </SelectContent>
+                                                                </Select>
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Column 2: Learning dates */}
+                                                        <div className="space-y-4">
+                                                            <div className="space-y-1.5">
+                                                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold text-emerald-600 dark:text-emerald-400">Start Learning <span className="text-rose-500">*</span></Label>
+                                                                <DatePicker
+                                                                    value={startDate || null}
+                                                                    placeholder="Pick a date"
+                                                                    onChange={(val) => form.setData('subject_start_dates', { ...form.data.subject_start_dates, [subject]: val || '' })}
+                                                                />
+                                                                <InputError message={startError} />
+                                                            </div>
+                                                            <div className="space-y-1.5">
+                                                                <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold text-rose-600 dark:text-rose-400">Stop Learning <span className="text-rose-500">*</span></Label>
+                                                                <DatePicker
+                                                                    value={endDate || null}
+                                                                    placeholder="Pick a date"
+                                                                    onChange={(val) => form.setData('subject_end_dates', { ...form.data.subject_end_dates, [subject]: val || '' })}
+                                                                />
+                                                                <InputError message={endError} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Row 2: Session Durations */}
+                                                    <div className="space-y-4 p-3 bg-muted/50 rounded-lg relative">
+                                                        <div className="flex items-center justify-between">
+                                                            <Label className="text-xs uppercase tracking-wider text-muted-foreground font-bold">Session Mix</Label>
+                                                            {!(duration?.min || duration?.max) && (
+                                                                <Badge variant="outline" className="text-[10px] h-4">Optional</Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="flex items-center gap-2">
+                                                            <Select
+                                                                value={duration?.min?.toString() || ''}
+                                                                onValueChange={(value) =>
+                                                                    form.setData('subject_session_durations', {
+                                                                        ...form.data.subject_session_durations,
+                                                                        [subject]: {
+                                                                            ...form.data.subject_session_durations?.[subject],
+                                                                            min: parseInt(value),
+                                                                            max: Math.max(form.data.subject_session_durations?.[subject]?.max || 60, parseInt(value)),
+                                                                        },
+                                                                    })
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                    <SelectValue placeholder="Min" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {[15, 30, 45, 60].map(m => (
+                                                                        <SelectItem key={m} value={m.toString()}>
+                                                                            {formatDuration(m)}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                            <span className="text-xs text-muted-foreground">—</span>
+                                                            <Select
+                                                                value={duration?.max?.toString() || ''}
+                                                                onValueChange={(value) =>
+                                                                    form.setData('subject_session_durations', {
+                                                                        ...form.data.subject_session_durations,
+                                                                        [subject]: {
+                                                                            ...form.data.subject_session_durations?.[subject],
+                                                                            min: Math.min(form.data.subject_session_durations?.[subject]?.min || 30, parseInt(value)),
+                                                                            max: parseInt(value),
+                                                                        },
+                                                                    })
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                    <SelectValue placeholder="Max" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {[30, 45, 60, 90, 120, 150, 180, 210, 240].map(m => (
+                                                                        <SelectItem key={m} value={m.toString()}>
+                                                                            {formatDuration(m)}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        {(duration?.min || duration?.max) && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => {
+                                                                    const newPrefs = { ...form.data.subject_session_durations };
+                                                                    delete newPrefs[subject];
+                                                                    form.setData('subject_session_durations', newPrefs);
+                                                                }}
+                                                                className="absolute top-2.5 right-2.5 p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-full transition-colors"
+                                                                title="Clear custom durations"
+                                                            >
+                                                                <X className="w-4 h-4" />
+                                                            </button>
+                                                        )}
+                                                        <p className="text-[10px] text-muted-foreground italic">
+                                                            {duration?.min || duration?.max
+                                                                ? `${formatDuration(duration?.min || 30)} - ${formatDuration(duration?.max || 60)}`
+                                                                : "AI decides (based on your goal)"}
+                                                        </p>
+                                                    </div>
+                                                    <InputError message={(form.errors as Record<string, string | undefined>).subject_dates} />
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            ) : (
+                                <div className="text-center py-12 text-muted-foreground border-2 border-dashed rounded-2xl">
+                                    <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-20" />
+                                    <p className="font-medium">Search for a subject above to get started</p>
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
-
-                    {/* Hidden field for plan regeneration */}
-                    <input
-                        type="hidden"
-                        name="regenerate_plan"
-                        value={form.data.regenerate_plan ? '1' : '0'}
-                    />
 
                     {/* Form Actions */}
                     <div className="pt-4 border-t">
@@ -678,15 +744,115 @@ export default function OnboardingSettings({ user }: Props) {
                                 type="submit"
                                 className="bg-primary hover:bg-primary/90"
                                 size="sm"
+                                disabled={form.processing || subjectsMissingDates.length > 0}
                             >
-                                <Brain className="w-4 h-4 mr-2" />
-                                Generate Schedule
+                                {form.processing ? (
+                                    <>
+                                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                                        {hasCoreChanges ? 'Generating...' : 'Saving...'}
+                                    </>
+                                ) : (
+                                    <>
+                                        {hasCoreChanges ? (
+                                            <>
+                                                <Brain className="w-4 h-4 mr-2" />
+                                                Generate Schedule
+                                            </>
+                                        ) : (
+                                            <>
+                                                <SettingsIcon className="w-4 h-4 mr-2" />
+                                                Save Preferences
+                                            </>
+                                        )}
+                                    </>
+                                )}
                             </Button>
                         </div>
                     </div>
                 </form>
 
             </div>
+
+            {/* Subject Removal Confirmation Dialog */}
+            <Dialog open={!!subjectToRemove} onOpenChange={(open) => {
+                if (!open) {
+                    setSubjectToRemove(null);
+                    setSubjectRemoveInfo(null);
+                }
+            }}>
+                <DialogContent className="sm:max-w-md">
+                    {subjectRemoveInfo && subjectRemoveInfo.completed_sessions_count > 0 ? (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2 text-amber-500">
+                                    <AlertTriangle className="w-5 h-5" />
+                                    Wait! You've Made Progress! 🥺
+                                </DialogTitle>
+                                <DialogDescription className="pt-3 space-y-3">
+                                    <p className="text-base">
+                                        You've already completed <strong className="text-foreground">
+                                            {subjectRemoveInfo.current_day - 1} day{(subjectRemoveInfo.current_day - 1) !== 1 ? 's' : ''}
+                                        </strong> of <strong className="text-foreground">{subjectToRemove}</strong>!
+                                    </p>
+                                    <p>
+                                        That's <strong className="text-foreground">
+                                            {subjectRemoveInfo.completed_sessions_count} study session{subjectRemoveInfo.completed_sessions_count !== 1 ? 's' : ''}
+                                        </strong> of hard work. All that effort will be lost if you remove this subject. 😢
+                                    </p>
+                                    <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+                                        <p className="text-sm italic text-amber-500/80">
+                                            "Every hour you've invested in learning is a building block for your future." 🌟
+                                        </p>
+                                    </div>
+                                    <p className="text-sm font-medium text-foreground/80">
+                                        Are you absolutely sure you want to remove <strong>{subjectToRemove}</strong>?
+                                    </p>
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                <Button variant="outline" onClick={() => {
+                                    setSubjectToRemove(null);
+                                    setSubjectRemoveInfo(null);
+                                }}>
+                                    Keep Studying 💪
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    onClick={() => subjectToRemove && doRemoveSubject(subjectToRemove)}
+                                >
+                                    Remove Anyway 😔
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    ) : (
+                        <>
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <AlertTriangle className="w-5 h-5 text-muted-foreground" />
+                                    Remove Subject
+                                </DialogTitle>
+                                <DialogDescription className="pt-3">
+                                    Are you sure you want to remove <strong>{subjectToRemove}</strong> from your study plan? You haven't started any sessions yet, so no progress will be lost.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                <Button variant="outline" onClick={() => {
+                                    setSubjectToRemove(null);
+                                    setSubjectRemoveInfo(null);
+                                }}>
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="destructive"
+                                    onClick={() => subjectToRemove && doRemoveSubject(subjectToRemove)}
+                                >
+                                    Remove Subject
+                                </Button>
+                            </DialogFooter>
+                        </>
+                    )}
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }
