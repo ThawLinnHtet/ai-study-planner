@@ -97,7 +97,7 @@ You will need to generate an **App Password** from your Google Account settings 
 ```env
 MAIL_MAILER=smtp
 MAIL_HOST=smtp.gmail.com
-MAIL_PORT=465
+MAIL_PORT=587
 MAIL_USERNAME="your-email@gmail.com"
 MAIL_PASSWORD="your-16-character-app-password"
 MAIL_ENCRYPTION=tls
