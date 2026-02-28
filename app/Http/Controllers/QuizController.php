@@ -27,6 +27,8 @@ class QuizController extends Controller
             'subject' => ['required', 'string'],
             'topic' => ['nullable', 'string'],
             'forceNew' => ['boolean'],
+            'learning_path_id' => ['nullable', 'integer'],
+            'day_number' => ['nullable', 'integer'],
         ]);
 
         $user = $request->user();
@@ -58,6 +60,18 @@ class QuizController extends Controller
                 })
                 ->latest()
                 ->first();
+        }
+
+        // --- Validate Learning Path Daily Limit Check ---
+        if ($request->has('learning_path_id') && $request->has('day_number')) {
+            $learningPath = $user->learningPaths()->find($request->input('learning_path_id'));
+            if ($learningPath && (int)$request->input('day_number') === $learningPath->current_day) {
+                if ($learningPath->hasCompletedSessionToday()) {
+                    return response()->json([
+                        'error' => 'You have already completed a session for this Learning Path today. Come back tomorrow!'
+                    ], 403);
+                }
+            }
         }
 
         if ($existingQuiz) {

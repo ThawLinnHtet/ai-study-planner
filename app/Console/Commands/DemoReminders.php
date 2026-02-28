@@ -44,7 +44,7 @@ class DemoReminders extends Command
             [
                 'type' => 'streak_risk',
                 'title' => "🔥 Don't lose your {$streak}-day streak",
-                'message' => 'One more study session keeps the momentum!',
+                'message' => 'One more study session keeps your streak alive!',
             ],
             [
                 'type' => 'tasks_pending',

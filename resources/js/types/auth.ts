@@ -9,6 +9,7 @@ export type User = {
     updated_at: string;
     // Study statistics
     total_study_hours?: number;
+    auth_provider?: string | null;
     current_streak?: number;
     longest_streak?: number;
     completed_sessions?: number;

@@ -97,7 +97,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 // Types
 interface DayData {
     day_number: number;
-    status: 'completed' | 'unlocked' | 'locked';
+    status: 'completed' | 'unlocked' | 'locked' | 'locked_daily_limit' | 'locked_future';
     topic: string;
     level: string;
     duration_minutes: number;
@@ -620,15 +620,17 @@ export default function StudyPlanner({
                                     {getStreakSubtext(streakCelebration.milestone, streakCelebration.streak)}
                                 </p>
                             </div>
+
                             <div className="bg-slate-50 dark:bg-slate-800/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-4">
                                 <div className="text-left">
-                                    <p className="text-sm font-bold text-orange-800 dark:text-orange-300">Keep the momentum!</p>
+                                    <p className="text-sm font-bold text-orange-800 dark:text-orange-300">Keep it up!</p>
                                     <p className="text-xs text-orange-700/70 dark:text-orange-400/60 leading-tight">Come back tomorrow to level up 🚀</p>
                                 </div>
                                 <div className="p-2 bg-white dark:bg-orange-900/40 rounded-xl shadow-sm">
                                     <Sparkles className="w-6 h-6 text-orange-500" />
                                 </div>
                             </div>
+
                             <Button onClick={dismissCelebration} size="lg" className="w-full bg-slate-900 hover:bg-black dark:bg-white dark:text-black dark:hover:bg-slate-200 text-white font-bold h-14 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-lg">
                                 Awesome! Let's stay on track
                             </Button>
@@ -1001,21 +1003,25 @@ export default function StudyPlanner({
                                                                     const isUnlocked = day.status === 'unlocked' || day.status === 'completed';
                                                                     const isCurrent = day.day_number === path.current_day;
                                                                     const isSelected = expandedDay === `${path.id}-${day.day_number}`;
+                                                                    const isLockedDailyLimit = day.status === 'locked_daily_limit';
+                                                                    const isLockedFuture = day.status === 'locked_future';
 
                                                                     return (
                                                                         <button
                                                                             key={day.day_number}
-                                                                            disabled={day.status === 'locked'}
+                                                                            disabled={day.status === 'locked' || isLockedDailyLimit || isLockedFuture}
                                                                             className={cn(
                                                                                 "relative p-3 rounded-xl border text-left transition-all duration-300 group overflow-hidden",
                                                                                 day.status === 'completed'
                                                                                     ? "bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15"
-                                                                                    : isCurrent
-                                                                                        ? cn("bg-primary/10 border-primary/40 hover:bg-primary/15 ring-2 ring-primary/20 animate-pulse-slow shadow-lg", subColor.glow)
-                                                                                        : day.status === 'locked'
-                                                                                            ? "opacity-30 grayscale cursor-not-allowed border-border/20"
-                                                                                            : cn("bg-muted/20 border-border/30 hover:bg-muted/30 hover:border-primary/30", subColor.bg.replace('/10', '/5')),
-                                                                                isSelected && !isCurrent && "ring-2 " + subColor.border.replace('/20', '/60') + " " + subColor.bg.replace('/10', '/20')
+                                                                                    : isLockedDailyLimit
+                                                                                        ? "bg-amber-500/5 border-amber-500/30 ring-1 ring-amber-500/20 shadow-sm opacity-90 cursor-not-allowed"
+                                                                                        : isCurrent
+                                                                                            ? cn("bg-primary/10 border-primary/40 hover:bg-primary/15 ring-2 ring-primary/20 animate-pulse-slow shadow-lg", subColor.glow)
+                                                                                            : (day.status === 'locked' || isLockedFuture)
+                                                                                                ? "opacity-30 grayscale cursor-not-allowed border-border/20"
+                                                                                                : cn("bg-muted/20 border-border/30 hover:bg-muted/30 hover:border-primary/30", subColor.bg.replace('/10', '/5')),
+                                                                                isSelected && !isCurrent && !isLockedDailyLimit && "ring-2 " + subColor.border.replace('/20', '/60') + " " + subColor.bg.replace('/10', '/20')
                                                                             )}
                                                                             onClick={() => isUnlocked && setExpandedDay(isSelected ? null : `${path.id}-${day.day_number}`)}
                                                                         >
@@ -1026,13 +1032,17 @@ export default function StudyPlanner({
                                                                             <div className="flex items-center justify-between mb-1.5 relative z-10">
                                                                                 <span className={cn(
                                                                                     "text-xs font-black tracking-tight",
-                                                                                    day.status === 'completed' ? "text-emerald-500" : isCurrent ? subColor.text : "text-muted-foreground"
+                                                                                    day.status === 'completed' ? "text-emerald-500" : (isLockedDailyLimit || isLockedFuture) ? "text-amber-500" : isCurrent ? subColor.text : "text-muted-foreground"
                                                                                 )}>
                                                                                     DAY {day.day_number}
                                                                                 </span>
                                                                                 <div className="transition-transform group-hover:scale-110 duration-300">
                                                                                     {day.status === 'completed' ? (
                                                                                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                                                                                    ) : isLockedDailyLimit ? (
+                                                                                        <Clock className="w-3.5 h-3.5 text-amber-500" />
+                                                                                    ) : isLockedFuture ? (
+                                                                                        <Calendar className="w-3.5 h-3.5 text-amber-500" />
                                                                                     ) : day.status === 'locked' ? (
                                                                                         <Lock className="w-3 h-3 text-muted-foreground/50" />
                                                                                     ) : (
@@ -1042,9 +1052,9 @@ export default function StudyPlanner({
                                                                             </div>
                                                                             <p className={cn(
                                                                                 "text-[10px] font-bold leading-tight line-clamp-2 min-h-[1.5rem] transition-colors",
-                                                                                day.status === 'locked' ? "text-muted-foreground" : "text-foreground group-hover:" + subColor.text
+                                                                                day.status === 'locked' ? "text-muted-foreground" : isLockedDailyLimit ? "text-amber-600/80" : "text-foreground group-hover:" + subColor.text
                                                                             )}>
-                                                                                {day.topic}
+                                                                                {isLockedDailyLimit ? 'Come back tomorrow to unlock' : isLockedFuture ? 'Unlocks at 12:00 AM' : day.topic}
                                                                             </p>
                                                                         </button>
                                                                     );
@@ -1270,14 +1280,23 @@ export default function StudyPlanner({
                                     </DialogTitle>
                                     <DialogDescription className="pt-3 space-y-3">
                                         <p className="text-base">
-                                            You've already completed <strong className="text-foreground">{pathToDeleteInfo.completed_days} day{pathToDeleteInfo.completed_days !== 1 ? 's' : ''}</strong> of {pathToDelete?.subject_name}!
-                                        </p>
-                                        <p>
-                                            That's <strong className="text-foreground">{pathToDeleteInfo.completed_sessions} study session{pathToDeleteInfo.completed_sessions !== 1 ? 's' : ''}</strong> of hard work and dedication. 😢
+                                            {pathToDeleteInfo.completed_sessions <= 2 ? (
+                                                <>
+                                                    You've already completed <strong className="text-foreground">{pathToDeleteInfo.completed_sessions} study session{pathToDeleteInfo.completed_sessions !== 1 ? 's' : ''}</strong> of {pathToDelete?.subject_name}!
+                                                    Even one hour of focus is a huge win for your future self. 🌟
+                                                </>
+                                            ) : (
+                                                <>
+                                                    You've already completed <strong className="text-foreground">{pathToDeleteInfo.completed_days} day{pathToDeleteInfo.completed_days !== 1 ? 's' : ''}</strong> of {pathToDelete?.subject_name}!
+                                                    That's <strong className="text-foreground">{pathToDeleteInfo.completed_sessions} study session{pathToDeleteInfo.completed_sessions !== 1 ? 's' : ''}</strong> of hard work and dedication. 😢
+                                                </>
+                                            )}
                                         </p>
                                         <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
                                             <p className="text-sm italic text-amber-400/80">
-                                                "Every day of learning is a step towards mastery. Your progress matters, even if you decide to start fresh." 🌟
+                                                {pathToDeleteInfo.completed_sessions <= 2
+                                                    ? "\"The first steps are often the hardest. Your efforts so far are proof of your commitment.\" ✨"
+                                                    : "\"Every day of learning is a step towards mastery. Your progress matters, even if you decide to start fresh.\" 🌟"}
                                             </p>
                                         </div>
                                         <p className="text-sm font-medium text-foreground/80">

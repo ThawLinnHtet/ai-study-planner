@@ -114,7 +114,7 @@ class BehavioralNotificationService
                 $user,
                 'goal_met',
                 "🏆 Weekly Goal Crushed!",
-                "Amazing job! You've completed 100% of your weekly study goal. Take a well-deserved break or keep the momentum going!"
+                "Amazing job! You've completed 100% of your weekly study goal. Take a well-deserved break or keep your progress going!"
             );
         }
 

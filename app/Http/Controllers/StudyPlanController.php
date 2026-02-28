@@ -46,6 +46,7 @@ class StudyPlanController extends Controller
         $timezone = $user->timezone ?? config('app.timezone');
         $completedSessions = $user->studySessions()
             ->where('started_at', '>=', Carbon::now($timezone)->startOfDay())
+            ->where('status', 'completed')
             ->get();
 
         if ($activePlan !== null) {
@@ -109,8 +110,8 @@ class StudyPlanController extends Controller
                 return [
                     'id' => $s->id,
                     'learning_path_id' => $s->learning_path_id,
-                    'subject' => $s->meta['subject'] ?? ($s->learningPath ? $s->learningPath->subject_name : 'Study Session'),
-                    'topic' => $s->meta['topic'] ?? 'Study Session',
+                    'subject' => $s->meta['subject_name'] ?? $s->meta['subject'] ?? ($s->learningPath ? $s->learningPath->subject_name : 'Study Session'),
+                    'topic' => $s->meta['topic_name'] ?? $s->meta['topic'] ?? 'Study Session',
                 ];
             }),
             'onboardingCompleted' => $user->onboarding_completed,
@@ -414,7 +415,7 @@ class StudyPlanController extends Controller
             $this->studyPlanService->rebalancePlan($request->user());
             return back()->with('success', 'Your study plan has been optimized based on your recent progress!');
         } catch (\Exception $e) {
-            return back()->with('error', 'We encountered an error while optimizing your plan: ' . $e->getMessage());
+            return back()->with('error', $e->getMessage());
         }
     }
 
@@ -468,6 +469,8 @@ class StudyPlanController extends Controller
                 'meta' => [
                     'subject_name' => $validated['subject'],
                     'topic_name' => $validated['topic'],
+                    'subject' => $validated['subject'],
+                    'topic' => $validated['topic'],
                     'quiz_result_id' => $quizResult->id,
                     'quiz_percentage' => $quizResult->percentage,
                     'fallback_plan' => !$activePlanId,
@@ -551,12 +554,8 @@ class StudyPlanController extends Controller
             $topic = $settings['topic'] ?? $topic;
         }
 
-        // Use the actual quiz duration if captured, otherwise fall back to 60 min
-        if ($quizResult->duration_seconds && $quizResult->duration_seconds > 0) {
-            $durationMinutes = (int) ceil($quizResult->duration_seconds / 60);
-            // Clamp to realistic session bounds (5 min – 90 min)
-            $durationMinutes = max(5, min(90, $durationMinutes));
-        }
+        // Use the planned session duration from settings if available, otherwise fallback to 60
+        $durationMinutes = (int) ($settings['duration_minutes'] ?? $durationMinutes);
 
         $timezone = $user->timezone ?? config('app.timezone');
         $session = $user->studySessions()->create([
@@ -569,6 +568,8 @@ class StudyPlanController extends Controller
             'meta' => [
                 'subject_name' => $subject,
                 'topic_name' => $topic,
+                'subject' => $subject,
+                'topic' => $topic,
                 'quiz_result_id' => $quizResult->id,
                 'quiz_percentage' => $quizResult->percentage,
                 'fallback_plan' => !$activePlanId,
@@ -610,9 +611,9 @@ class StudyPlanController extends Controller
         // Enforce cooldown to prevent rapid back-to-back AI plan generation
         $timezone = $user->timezone ?? config('app.timezone');
         $activePlan = $user->studyPlans()->where('status', 'active')->first();
-        if ($activePlan && $activePlan->prevent_rebalance_until && \Carbon\Carbon::now($timezone)->lt(Carbon::parse($activePlan->prevent_rebalance_until, $timezone))) {
-            $waitMinutes = (int) \Carbon\Carbon::now($timezone)->diffInMinutes(Carbon::parse($activePlan->prevent_rebalance_until, $timezone));
-            session()->flash('error', "Please wait {$waitMinutes} more minute(s) before renewing your plan.");
+        if ($activePlan && $activePlan->prevent_rebalance_until && Carbon::now($timezone)->lt(Carbon::parse($activePlan->prevent_rebalance_until, $timezone))) {
+            $waitMinutes = (int) Carbon::now($timezone)->diffInMinutes(Carbon::parse($activePlan->prevent_rebalance_until, $timezone));
+            session()->flash('error', "Your plan is settling. Please wait {$waitMinutes} more minute(s) before renewing your cycle.");
             return redirect()->route('study-planner');
         }
 

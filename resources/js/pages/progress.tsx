@@ -608,8 +608,8 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                             <CardDescription>XP and minutes over time</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-6">
-                            <div className="h-[250px] w-full">
-                                <ResponsiveContainer width="100%" height={220}>
+                            <div className="h-[250px] w-full min-h-[250px]">
+                                <ResponsiveContainer width="100%" height="100%">
                                     <AreaChart data={stats.series} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
                                         <defs>
                                             <linearGradient id="xpFill" x1="0" y1="0" x2="0" y2="1">
@@ -658,8 +658,8 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                 </ResponsiveContainer>
                             </div>
 
-                            <div className="h-[180px]">
-                                <ResponsiveContainer width="100%" height={180}>
+                            <div className="h-[180px] w-full min-h-[180px]">
+                                <ResponsiveContainer width="100%" height="100%">
                                     <BarChart data={stats.series} margin={{ left: 8, right: 8, top: 10, bottom: 0 }}>
                                         <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                                         <XAxis
@@ -815,7 +815,7 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                 </CardTitle>
                                 <CardDescription>Your quiz scores over time</CardDescription>
                             </CardHeader>
-                            <CardContent className="h-[300px]">
+                            <CardContent className="h-[300px] w-full min-h-[300px]">
                                 {quizTrends?.score_trend && quizTrends.score_trend.length > 0 ? (
                                     <ResponsiveContainer width="100%" height="100%">
                                         <AreaChart data={quizTrends.score_trend} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -863,9 +863,9 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                                 </CardTitle>
                                 <CardDescription>Average scores by subject</CardDescription>
                             </CardHeader>
-                            <CardContent>
+                            <CardContent className="min-h-[220px]">
                                 {quizStats?.subject_breakdown && quizStats.subject_breakdown.length > 0 ? (
-                                    <ResponsiveContainer width="100%" height={200}>
+                                    <ResponsiveContainer width="100%" height={220}>
                                         <BarChart data={quizStats.subject_breakdown}>
                                             <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                                             <XAxis
@@ -960,7 +960,7 @@ export default function ProgressPage({ progress: stats, quizHistory, quizStats, 
                             <CardContent>
                                 <div className="space-y-2">
                                     {quizStats?.subject_breakdown && quizStats.subject_breakdown.length > 0 ? (
-                                        quizStats.subject_breakdown
+                                        [...quizStats.subject_breakdown]
                                             .sort((a, b) => b.average - a.average)
                                             .slice(0, 3)
                                             .map((subject, index) => (

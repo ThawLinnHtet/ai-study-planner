@@ -14,7 +14,7 @@
                 <!-- Brand Name -->
                 <td style="vertical-align: middle; text-align: left;">
                     <span style="font-family: 'Manrope', Arial, sans-serif; font-size: 26px; font-weight: 800; color: #1b1b18; letter-spacing: -1px; line-height: 1;">
-                        Neuron AI
+                        Flux AI
                     </span>
                 </td>
             </tr>

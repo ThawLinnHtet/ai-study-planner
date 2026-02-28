@@ -57,7 +57,7 @@ class ReminderController extends Controller
     public function dismissAll(Request $request)
     {
         Reminder::where('user_id', $request->user()->id)
-            ->whereIn('status', ['pending', 'sent'])
+            ->whereIn('status', ['pending', 'sent', 'read'])
             ->update(['status' => 'dismissed']);
 
         if ($request->wantsJson()) {

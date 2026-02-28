@@ -1,5 +1,6 @@
-import { useForm } from '@inertiajs/react';
+import { useForm, usePage } from '@inertiajs/react';
 import { useRef } from 'react';
+import type { SharedData } from '@/types';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 export default function DeleteUser() {
+    const { auth } = usePage<SharedData>().props;
+    const isOAuthUser = !!auth.user.auth_provider;
+
     const passwordInput = useRef<HTMLInputElement>(null);
     const form = useForm({
         password: '',
@@ -51,9 +55,8 @@ export default function DeleteUser() {
                         </DialogTitle>
                         <DialogDescription>
                             Once your account is deleted, all of its resources
-                            and data will also be permanently deleted. Please
-                            enter your password to confirm you would like to
-                            permanently delete your account.
+                            and data will also be permanently deleted.
+                            {!isOAuthUser && ' Please enter your password to confirm you would like to permanently delete your account.'}
                         </DialogDescription>
 
                         <form
@@ -69,27 +72,29 @@ export default function DeleteUser() {
                         >
                             {(() => (
                                 <>
-                                    <div className="grid gap-2">
-                                        <Label
-                                            htmlFor="password"
-                                            className="sr-only"
-                                        >
-                                            Password
-                                        </Label>
+                                    {!isOAuthUser && (
+                                        <div className="grid gap-2">
+                                            <Label
+                                                htmlFor="password"
+                                                className="sr-only"
+                                            >
+                                                Password
+                                            </Label>
 
-                                        <Input
-                                            id="password"
-                                            type="password"
-                                            name="password"
-                                            ref={passwordInput}
-                                            placeholder="Password"
-                                            autoComplete="current-password"
-                                            value={form.data.password}
-                                            onChange={(e) => form.setData('password', e.target.value)}
-                                        />
+                                            <Input
+                                                id="password"
+                                                type="password"
+                                                name="password"
+                                                ref={passwordInput}
+                                                placeholder="Password"
+                                                autoComplete="current-password"
+                                                value={form.data.password}
+                                                onChange={(e) => form.setData('password', e.target.value)}
+                                            />
 
-                                        <InputError message={form.errors.password} />
-                                    </div>
+                                            <InputError message={form.errors.password} />
+                                        </div>
+                                    )}
 
                                     <DialogFooter className="gap-2">
                                         <DialogClose asChild>

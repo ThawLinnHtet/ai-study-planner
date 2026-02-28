@@ -33,36 +33,27 @@ class UserProgressService
 
         $totalMinutes = (int) $completedQuery->clone()->sum(DB::raw('coalesce(duration_minutes, 0)'));
         $totalSessions = (int) $completedQuery->clone()->count();
-        $totalXp = $this->calculateXpFromMinutesAndSessions($totalMinutes, $totalSessions);
-
-        $level = $this->levelFromXp($totalXp);
-        $xpForNextLevel = $this->xpForLevel($level + 1);
-        $xpForCurrentLevel = $this->xpForLevel($level);
-        $xpIntoLevel = max(0, $totalXp - $xpForCurrentLevel);
-        $xpLevelSpan = max(1, $xpForNextLevel - $xpForCurrentLevel);
-        $xpProgressPercent = (int) round(($xpIntoLevel / $xpLevelSpan) * 100);
 
         // Debug logging for verification
-        Log::info('XP Calculation for User ' . $user->id, [
+        Log::info('Session Calculation for User ' . $user->id, [
             'total_minutes' => $totalMinutes,
             'total_sessions' => $totalSessions,
-            'total_xp' => $totalXp,
-            'level' => $level,
-            'xp_for_current_level' => $xpForCurrentLevel,
-            'xp_for_next_level' => $xpForNextLevel,
-            'xp_into_level' => $xpIntoLevel,
-            'xp_to_next' => $xpForNextLevel - $totalXp,
-            'progress_percent' => $xpProgressPercent,
             'cache_key' => $cacheKey,
         ]);
 
-        $byDay = $completedQuery->clone()
+        $sessionsData = $completedQuery->clone()
             ->whereBetween('started_at', [$start, $end])
-            ->selectRaw("date(started_at) as day, count(*) as sessions, sum(coalesce(duration_minutes, 0)) as minutes")
-            ->groupBy('day')
-            ->orderBy('day')
-            ->get()
-            ->keyBy('day');
+            ->get(['started_at', 'duration_minutes']);
+
+        $byDay = [];
+        foreach ($sessionsData as $session) {
+            $day = Carbon::parse($session->started_at)->timezone($timezone)->toDateString();
+            if (!isset($byDay[$day])) {
+                $byDay[$day] = (object) ['sessions' => 0, 'minutes' => 0];
+            }
+            $byDay[$day]->sessions++;
+            $byDay[$day]->minutes += $session->duration_minutes ?? 0;
+        }
 
         $series = [];
         for ($i = 0; $i < $days; $i++) {
@@ -95,6 +86,16 @@ class UserProgressService
             streakBest: $streak['best'],
             weekMinutes: $weekMinutes,
         );
+
+        $achievementXp = collect($achievements)->where('unlocked', true)->sum('xp_reward');
+        $totalXp = $this->calculateXpFromMinutesAndSessions($totalMinutes, $totalSessions) + $achievementXp;
+        $level = $this->levelFromXp($totalXp);
+        $xpForNextLevel = $this->xpForLevel($level + 1);
+        $xpForCurrentLevel = $this->xpForLevel($level);
+        
+        $xpIntoLevel = max(0, $totalXp - $xpForCurrentLevel);
+        $xpNeededForLevel = max(1, $xpForNextLevel - $xpForCurrentLevel);
+        $xpProgressPercent = min(100, round(($xpIntoLevel / $xpNeededForLevel) * 100));
 
         // Calculate weekly target with adaptive defaults
         $dailyHours = (float) ($user->daily_study_hours ?? 0);
@@ -269,14 +270,14 @@ class UserProgressService
     {
         $dbStreak = (int) ($user->study_streak ?? 0);
         
+        $timezone = $user->timezone ?? config('app.timezone');
         $days = StudySession::query()
             ->where('user_id', $user->id)
             ->where('status', 'completed')
-            ->selectRaw('date(started_at) as day')
-            ->distinct()
-            ->orderBy('day')
-            ->pluck('day')
-            ->map(fn ($d) => Carbon::parse($d)->toDateString())
+            ->orderBy('started_at')
+            ->pluck('started_at')
+            ->map(fn ($dt) => Carbon::parse($dt)->timezone($timezone)->toDateString())
+            ->unique()
             ->values()
             ->all();
 
@@ -434,7 +435,7 @@ class UserProgressService
             } elseif ($pct >= 75) {
                 return '📈 Strong progress! You\'re on track - add ' . round($remaining/60, 1) . ' more hours this week.';
             } elseif ($pct >= 50) {
-                return '💪 Good momentum! Focus on ' . $dailyTarget . ' hours daily to reach your goal.';
+                return '💪 Good progress! Focus on ' . $dailyTarget . ' hours daily to reach your goal.';
             } elseif ($pct >= 25) {
                 return '🚀 Building consistency! Try studying ' . $dailyTarget . ' hours per day.';
             } else {
@@ -445,7 +446,7 @@ class UserProgressService
         if ($streakCurrent >= 7) {
             return '🔥 Amazing ' . $streakCurrent . '-day streak! You\'re building incredible habits.';
         } elseif ($streakCurrent >= 3) {
-            return '👏 Great ' . $streakCurrent . '-day streak! Keep the momentum going.';
+            return '👏 Great ' . $streakCurrent . '-day streak! Keep the consistency going.';
         } elseif ($streakCurrent >= 1) {
             return '🎯 Nice ' . $streakCurrent . '-day streak! Study today to extend it.';
         }

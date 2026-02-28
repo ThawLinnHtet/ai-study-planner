@@ -176,12 +176,8 @@ class LearningPathController extends Controller
             // Get day data for the session metadata
             $dayData = $learningPath->getDayData($dayNumber);
 
-            // Use actual quiz duration if available
-            $durationMinutes = 60;
-            if ($quizResult->duration_seconds && $quizResult->duration_seconds > 0) {
-                $durationMinutes = (int) ceil($quizResult->duration_seconds / 60);
-                $durationMinutes = max(5, min(90, $durationMinutes));
-            }
+            // Use the planned duration for this day, defaulting to 60 if not found
+            $durationMinutes = $dayData['duration_minutes'] ?? 60;
 
             // Create study session linked to Learning Path
             $session = $user->studySessions()->create([
@@ -196,6 +192,8 @@ class LearningPathController extends Controller
                 'meta' => [
                     'subject_name' => $learningPath->subject_name,
                     'topic_name' => $dayData['topic'] ?? "Day {$dayNumber}",
+                    'subject' => $learningPath->subject_name,
+                    'topic' => $dayData['topic'] ?? "Day {$dayNumber}",
                     'day_number' => $dayNumber,
                     'learning_path_id' => $learningPath->id,
                     'quiz_result_id' => $quizResult->id,

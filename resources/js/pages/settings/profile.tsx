@@ -299,7 +299,13 @@ export default function Profile({
                                         required
                                         autoComplete="username"
                                         placeholder="Email address"
+                                        disabled={!!auth.user.auth_provider}
                                     />
+                                    {!!auth.user.auth_provider && (
+                                        <p className="text-[13px] text-muted-foreground mt-1">
+                                            Your email is managed by your connected Google account.
+                                        </p>
+                                    )}
                                     <InputError message={form.errors.email} />
                                 </div>
 

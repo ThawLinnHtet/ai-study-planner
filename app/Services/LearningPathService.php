@@ -611,15 +611,20 @@ class LearningPathService
         }
 
         $completedCount = $learningPath->completedSessionsCount();
-        $completedDays = max(0, $learningPath->current_day - 1);
+        $completedDaysFromPath = max(0, $learningPath->current_day - 1);
         if ($learningPath->isCurrentDayComplete()) {
-            $completedDays = $learningPath->current_day;
+            $completedDaysFromPath = $learningPath->current_day;
         }
+
+        // If we have sessions via metadata but current_day is still 1, 
+        // it means we have legacy/dashboard progress that isn't reflected in the current path's day count.
+        $hasProgress = $completedCount > 0;
+        $completedDays = ($hasProgress && $completedDaysFromPath === 0) ? 1 : $completedDaysFromPath;
 
         return [
             'id' => $learningPath->id,
             'subject_name' => $learningPath->subject_name,
-            'has_progress' => $completedCount > 0,
+            'has_progress' => $hasProgress,
             'completed_sessions' => $completedCount,
             'completed_days' => $completedDays,
             'total_days' => $learningPath->total_days,

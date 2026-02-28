@@ -9,6 +9,7 @@ use Illuminate\Notifications\Messages\BroadcastMessage;
 use Illuminate\Notifications\Messages\DatabaseMessage;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Broadcasting\PrivateChannel;
 
 class StudyReminderNotification extends Notification implements ShouldQueue
 {
@@ -33,19 +34,13 @@ class StudyReminderNotification extends Notification implements ShouldQueue
     public function toDatabase($notifiable): array
     {
         return [
-            'user_id' => $notifiable->id,
-            'type' => 'reminder',
+            'reminder_id' => $this->reminder->id,
+            'type' => $this->reminder->type,
             'title' => $this->reminder->title,
             'message' => $this->reminder->message,
-            'data' => json_encode([
-                'reminder_id' => $this->reminder->id,
-                'type' => $this->reminder->type,
-                'payload' => $this->reminder->payload,
-                'icon' => $this->getIcon(),
-                'action_url' => $this->getActionUrl(),
-            ]),
-            'is_read' => false,
-            'email_sent' => false,
+            'payload' => $this->reminder->payload,
+            'icon' => $this->getIcon(),
+            'action_url' => $this->getActionUrl(),
         ];
     }
 
@@ -70,7 +65,7 @@ class StudyReminderNotification extends Notification implements ShouldQueue
 
     public function broadcastOn(): array
     {
-        return ["user.{$this->reminder->user_id}"];
+        return [new PrivateChannel("user.{$this->reminder->user_id}")];
     }
 
     public function broadcastAs(): string

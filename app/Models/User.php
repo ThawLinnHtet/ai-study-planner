@@ -47,6 +47,11 @@ class User extends Authenticatable
         'emails_sent_today',
         'subject_start_dates',
         'subject_end_dates',
+        'auth_provider',
+        'google_id',
+        'google_email',
+        'google_avatar',
+        'google_connected_at',
     ];
 
     /**
@@ -123,13 +128,7 @@ class User extends Authenticatable
 
     public function notify($notification)
     {
-        // Create notification using custom model if it has toDatabase method
-        if (method_exists($notification, 'toDatabase')) {
-            $data = $notification->toDatabase($this);
-            return \App\Models\Notification::create($data);
-        }
-
-        // Fallback to standard Laravel notification delivery (e.g. for ResetPassword)
+        // Fallback to standard Laravel notification delivery
         return $this->laravelNotify($notification);
     }
 

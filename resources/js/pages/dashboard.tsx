@@ -1,4 +1,4 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { format, parseISO, startOfDay, addDays } from 'date-fns';
 import {
     Zap,
@@ -22,7 +22,8 @@ import { Progress } from '@/components/ui/progress';
 import AppLayout from '@/layouts/app-layout';
 import { cn, formatDuration } from '@/lib/utils';
 import { dashboard } from '@/routes';
-import type { BreadcrumbItem } from '@/types';
+import { toast } from 'sonner';
+import type { BreadcrumbItem, SharedData } from '@/types';
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { getSubjectColor } from '@/lib/subject-colors';
 
@@ -173,8 +174,32 @@ const getGreeting = (name?: string) => {
 export default function Dashboard({ plan, activeLearningPaths = [], completedToday, progress, auth, isGeneratingPlan, generatingStatus, futureLearningPaths = [], isBehindSchedule }: Props & { auth: any }) {
     const [streakCelebration, setStreakCelebration] = useState<StreakCelebrationState | null>(null);
     const [confettiPieces, setConfettiPieces] = useState<ConfettiPiece[]>([]);
+    const [processingRebalance, setProcessingRebalance] = useState(false);
+
+    const page = usePage<SharedData>();
+    const flash = page.props.flash;
     const celebrationStyleRef = useRef<HTMLStyleElement | null>(null);
     const userId = auth?.user?.id;
+
+    // Handle Generation Loading State Toast
+    const flashSignatureRef = useRef<string>('');
+    useEffect(() => {
+        if (!flash) return;
+
+        const signature = JSON.stringify({
+            s: flash.success || '',
+            e: flash.error || '',
+            i: flash.info || '',
+            w: flash.warning || '',
+        });
+        if (signature === flashSignatureRef.current || signature === '{"s":"","e":"","i":"","w":""}') return;
+        flashSignatureRef.current = signature;
+
+        if (flash.success) toast.success(flash.success as string);
+        if (flash.error) toast.error(flash.error as string);
+        if (flash.info) toast.info(flash.info as string);
+        if (flash.warning) toast.warning(flash.warning as string);
+    }, [flash]);
 
     // Polling for plan generation
     useEffect(() => {
@@ -264,12 +289,19 @@ export default function Dashboard({ plan, activeLearningPaths = [], completedTod
     }, []);
 
     const handleRebalance = () => {
+        setProcessingRebalance(true);
         router.post('/study-plan/rebalance', {}, {
             onStart: () => {
                 // The backend updates is_generating_plan which triggers our polling
             },
+            onFinish: () => {
+                setProcessingRebalance(false);
+            },
             onSuccess: () => {
                 // Success message is handled by flash messages or backend redirect
+            },
+            onError: () => {
+                setProcessingRebalance(false);
             }
         });
     };
@@ -487,15 +519,17 @@ export default function Dashboard({ plan, activeLearningPaths = [], completedTod
                                     {getStreakSubtext(streakCelebration.milestone, streakCelebration.streak)}
                                 </p>
                             </div>
+
                             <div className="bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/20 dark:to-amber-950/20 rounded-2xl px-4 py-4 flex items-center justify-between border border-orange-100 dark:border-orange-900/30">
                                 <div className="text-left">
-                                    <p className="text-sm font-bold text-orange-800 dark:text-orange-300">Keep the momentum!</p>
+                                    <p className="text-sm font-bold text-orange-800 dark:text-orange-300">Keep it up!</p>
                                     <p className="text-xs text-orange-700/70 dark:text-orange-400/60 leading-tight">Come back tomorrow to level up 🚀</p>
                                 </div>
                                 <div className="p-2 bg-white dark:bg-orange-900/40 rounded-xl shadow-sm">
                                     <Sparkles className="w-6 h-6 text-orange-500" />
                                 </div>
                             </div>
+
                             <Button onClick={dismissCelebration} size="lg" className="w-full bg-slate-900 hover:bg-black dark:bg-white dark:text-black dark:hover:bg-slate-200 text-white font-bold h-14 rounded-2xl transition-all hover:scale-[1.02] active:scale-95 shadow-lg">
                                 Awesome! Let's stay on track
                             </Button>
@@ -526,9 +560,10 @@ export default function Dashboard({ plan, activeLearningPaths = [], completedTod
                                 onClick={handleRebalance}
                                 className="bg-amber-600 hover:bg-amber-700 text-white border-none shrink-0"
                                 size="lg"
+                                disabled={processingRebalance}
                             >
-                                <RefreshCw className="w-4 h-4 mr-2" />
-                                Rebalance My Plan
+                                <RefreshCw className={cn("w-4 h-4 mr-2", processingRebalance && "animate-spin")} />
+                                {processingRebalance ? "Optimizing..." : "Rebalance My Plan"}
                             </Button>
                         </CardContent>
                     </Card>

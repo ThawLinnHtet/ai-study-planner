@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Carbon\Carbon;
 
 class LearningPath extends Model
 {
@@ -63,10 +64,54 @@ class LearningPath extends Model
         }
 
         if ($dayNumber === $this->current_day) {
+            $timezone = $this->user->timezone ?? config('app.timezone');
+            
+            // NIGHT OWL GRACE PERIOD: 
+            // If it's before 3:00 AM, we treat it as "yesterday" for scheduled day logic
+            $currentEffectiveDate = now($timezone);
+            if ((int) $currentEffectiveDate->format('H') < 3) {
+                $currentEffectiveDate->subDay();
+            }
+
+            // 1. SEQUENCE LOCK: Is this day actually scheduled for now/past?
+            $scheduledDate = Carbon::parse($this->start_date->toDateString(), $timezone)->addDays($dayNumber - 1);
+            if ($currentEffectiveDate->startOfDay()->lt($scheduledDate->startOfDay())) {
+                return 'locked_future'; // Too early for this calendar day
+            }
+
+            // 2. FREQUENCY LOCK: Have they already performed a session today?
+            if ($this->hasCompletedSessionToday()) {
+                return 'locked_daily_limit';
+            }
+
             return 'unlocked';
         }
 
         return 'locked';
+    }
+
+    /**
+     * Check if a session has been completed today for this learning path.
+     * Includes a 3-hour grace period (sessions between 12-3 AM count for previous day).
+     */
+    public function hasCompletedSessionToday(): bool
+    {
+        $timezone = $this->user->timezone ?? config('app.timezone');
+        $now = now($timezone);
+        
+        // If it's currently 1:00 AM, we want to check if they studied 
+        // "today" (which began at 3:00 AM yesterday)
+        $startOfStudyDay = $now->copy();
+        if ((int) $startOfStudyDay->format('H') < 3) {
+            $startOfStudyDay->subDay()->setTime(3, 0, 0);
+        } else {
+            $startOfStudyDay->setTime(3, 0, 0);
+        }
+
+        return $this->studySessions()
+            ->where('status', 'completed')
+            ->where('started_at', '>=', $startOfStudyDay)
+            ->exists();
     }
 
     /**
@@ -162,11 +207,26 @@ class LearningPath extends Model
 
     /**
      * Count how many sessions have been completed across all days.
+     * Includes those linked by metadata for subjects where plan regeneration might have broken direct links.
      */
     public function completedSessionsCount(): int
     {
-        return $this->studySessions()
+        // 1. Direct relationship (most accurate for current plan)
+        $directCount = $this->studySessions()
             ->where('status', 'completed')
+            ->count();
+            
+        if ($directCount > 0) {
+            return $directCount;
+        }
+
+        // 2. Metadata fallback (for sessions created via dashboard/quiz that aren't directly linked)
+        return $this->user->studySessions()
+            ->where('status', 'completed')
+            ->where(function($query) {
+                $query->whereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, "$.subject_name"))) = ?', [strtolower($this->subject_name)])
+                      ->orWhereRaw('LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, "$.subject"))) = ?', [strtolower($this->subject_name)]);
+            })
             ->count();
     }
 }

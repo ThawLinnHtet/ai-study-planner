@@ -1,10 +1,10 @@
-# Neuron AI Study Planner 🧠
+# Flux AI Study Planner 🧠
 
 An intelligent, adaptive study planning application built with Laravel and React. It uses AI (via Google Gemini) to generate personalized study schedules based on your goals, learning style, and available time.
 
 ## 🌟 Key Features
 
-*   **AI-Powered Study Schedules:** Describe your goal, and Neuron AI builds a structured, adaptive learning path.
+*   **AI-Powered Study Schedules:** Describe your goal, and Flux AI builds a structured, adaptive learning path.
 *   **Dynamic Rebalancing:** Fall behind? The AI automatically recalculates and shifts your workload to keep you on track.
 *   **Real-time Analytics & XP:** Earn XP for completing sessions, level up, and maintain study streaks.
 *   **Behavioral Reminders:** Get smart nudges when you're inactive, or celebrate when you hit streak milestones and weekly goals.

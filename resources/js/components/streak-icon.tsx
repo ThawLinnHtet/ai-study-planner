@@ -86,7 +86,7 @@ export function getStreakMessage(streak: number): string {
   if (streak === 0) return 'Start your streak today!';
   if (streak === 1) return 'Great start! Keep it going!';
   if (streak === 2) return 'Two days strong! 🔥';
-  if (streak === 3) return 'Three in a row! Building momentum!';
+  if (streak === 3) return 'Three in a row! Going strong!';
   if (streak === 4) return 'Four-day streak! You\'re on fire!';
   if (streak === 5) return 'Five days! Amazing consistency!';
   if (streak === 6) return 'Six days! Almost a week!';
@@ -97,7 +97,7 @@ export function getStreakMessage(streak: number): string {
   if (streak === 30) return '30 days! You\'re a champion!';
   if (streak === 50) return '50 days! Absolutely legendary!';
   if (streak === 100) return '100 days! Unbelievable achievement!';
-  
+
   return `${streak} days! Keep the fire burning! 🔥`;
 }
 

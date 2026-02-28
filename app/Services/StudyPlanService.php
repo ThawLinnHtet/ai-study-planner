@@ -107,7 +107,7 @@ class StudyPlanService
                 'target_hours_per_week' => ($planData['daily_study_hours'] ?? $user->daily_study_hours) * 7,
                 'status' => 'active',
                 'generated_plan' => $normalized,
-                'prevent_rebalance_until' => Carbon::now()->addHours(24), // Prevent AI re-balance for 24 hours
+                'prevent_rebalance_until' => Carbon::now($timezone)->addHour(), // 1-hour cooldown
             ]);
 
             // MIGRATE SESSIONS from old plan to new plan
@@ -294,7 +294,8 @@ class StudyPlanService
 
         // Check if rebalance is prevented
         if ($activePlan->prevent_rebalance_until && Carbon::now($timezone)->lt(Carbon::parse($activePlan->prevent_rebalance_until, $timezone))) {
-            throw new \Exception('Plan rebalance is temporarily prevented to allow the new schedule to settle. Please try again later.');
+            $waitMinutes = (int) Carbon::now($timezone)->diffInMinutes(Carbon::parse($activePlan->prevent_rebalance_until, $timezone));
+            throw new \Exception("Plan rebalance is settling. Please wait {$waitMinutes} more minute(s) before optimizing again.");
         }
 
         // Gather performance data
@@ -381,7 +382,7 @@ class StudyPlanService
                 'target_hours_per_week' => $activePlan->target_hours_per_week,
                 'status' => 'active',
                 'generated_plan' => $normalized,
-                'prevent_rebalance_until' => Carbon::now($timezone)->addHours(12), // Prevent AI re-balance for 12 hours
+                'prevent_rebalance_until' => Carbon::now($timezone)->addHour(), // 1-hour cooldown
             ]);
 
             // MIGRATE SESSIONS from old plan to new plan
@@ -982,8 +983,8 @@ class StudyPlanService
         $completed = [];
         foreach ($sessions as $session) {
             $meta = $session->meta ?? [];
-            $subject = $meta['subject_name'] ?? null;
-            $topic = $meta['topic_name'] ?? null;
+            $subject = $meta['subject_name'] ?? $meta['subject'] ?? null;
+            $topic = $meta['topic_name'] ?? $meta['topic'] ?? null;
             if ($subject && $topic) {
                 $completed[$subject] = $completed[$subject] ?? [];
                 if (! in_array($topic, $completed[$subject], true)) {
@@ -1212,10 +1213,13 @@ class StudyPlanService
                     ->delete();
                 
                 // Also attempt to find sessions matching subject in meta (fallback for old data)
-                // This is less efficient but ensures parity if learning_path_id was null
+                // This ensures we catch sessions where learning_path_id was null (e.g. dashboard/quiz sessions)
                 $user->studySessions()
                     ->whereNull('learning_path_id')
-                    ->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.subject'))) = ?", [$subjectLower])
+                    ->where(function($query) use ($subjectLower) {
+                        $query->whereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.subject'))) = ?", [$subjectLower])
+                              ->orWhereRaw("LOWER(JSON_UNQUOTE(JSON_EXTRACT(meta, '$.subject_name'))) = ?", [$subjectLower]);
+                    })
                     ->delete();
             }
         }

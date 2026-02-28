@@ -35,7 +35,7 @@ return new class extends Migration
             $table->unsignedInteger('duration_minutes')->nullable();
 
             $table->string('type')->default('study');
-            $table->string('status')->default('completed');
+            $table->string('status'); 
 
             $table->text('notes')->nullable();
             $table->json('meta')->nullable();

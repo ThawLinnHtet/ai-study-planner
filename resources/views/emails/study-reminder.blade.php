@@ -188,7 +188,7 @@
     <div class="card">
         {{-- Header --}}
         <div class="card-header">
-            <div class="logo">📚 Study Planner</div>
+            <div class="logo">🧠 Flux AI</div>
 
             @php
                 $iconClass = match(true) {

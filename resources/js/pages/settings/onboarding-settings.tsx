@@ -204,6 +204,7 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
         study_goal: user.study_goal || '',
         timezone: user.timezone || '',
         regenerate_plan: false,
+        purged_subjects: [] as string[],
     });
 
     // TanStack Query for subjects
@@ -315,7 +316,8 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
 
     // Emotional delete dialog state
     const [subjectToRemove, setSubjectToRemove] = useState<string | null>(null);
-    const [subjectRemoveInfo, setSubjectRemoveInfo] = useState<Enrollment | null>(null);
+    const [subjectRemoveInfo, setSubjectRemoveInfo] = useState<any>(null);
+    const [purgeHistory, setPurgeHistory] = useState(false);
 
     const removeSubject = (subject: string) => {
         // Check if this subject has an active enrollment
@@ -341,6 +343,11 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
         delete newEndDates[subject];
         delete newDurations[subject];
 
+        const newPurged = [...form.data.purged_subjects];
+        if (purgeHistory && !newPurged.includes(subject)) {
+            newPurged.push(subject);
+        }
+
         form.setData({
             ...form.data,
             subjects: newSubjects,
@@ -348,7 +355,11 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
             subject_start_dates: newStartDates,
             subject_end_dates: newEndDates,
             subject_session_durations: newDurations,
+            purged_subjects: newPurged,
         });
+
+        // Reset purgeHistory for next time
+        setPurgeHistory(false);
 
         // Force re-render
         setSubjectsKey((prev) => prev + 1);
@@ -784,35 +795,62 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
                     {subjectRemoveInfo && subjectRemoveInfo.completed_sessions_count > 0 ? (
                         <>
                             <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2 text-amber-500">
-                                    <AlertTriangle className="w-5 h-5" />
+                                <DialogTitle className="flex items-center gap-2">
+                                    <AlertTriangle className="w-5 h-5 text-amber-500" />
                                     Wait! You've Made Progress! 🥺
                                 </DialogTitle>
-                                <DialogDescription className="pt-3 space-y-3">
-                                    <p className="text-base">
-                                        You've already completed <strong className="text-foreground">
-                                            {subjectRemoveInfo.current_day - 1} day{(subjectRemoveInfo.current_day - 1) !== 1 ? 's' : ''}
-                                        </strong> of <strong className="text-foreground">{subjectToRemove}</strong>!
-                                    </p>
-                                    <p>
-                                        That's <strong className="text-foreground">
-                                            {subjectRemoveInfo.completed_sessions_count} study session{subjectRemoveInfo.completed_sessions_count !== 1 ? 's' : ''}
-                                        </strong> of hard work. All that effort will be lost if you remove this subject. 😢
+                                <DialogDescription className="pt-3 space-y-4">
+                                    <p className="text-base text-foreground/90 leading-relaxed">
+                                        {subjectRemoveInfo.completed_sessions_count <= 2 ? (
+                                            <>
+                                                You've already completed <strong className="text-foreground">{subjectRemoveInfo.completed_sessions_count} study session{subjectRemoveInfo.completed_sessions_count !== 1 ? 's' : ''}</strong> of {subjectToRemove}!
+                                                Even one hour of focus is a huge win for your future self. 🌟
+                                            </>
+                                        ) : (
+                                            <>
+                                                You've already completed <strong className="text-foreground">{subjectRemoveInfo.current_day - 1} day{(subjectRemoveInfo.current_day - 1) !== 1 ? 's' : ''}</strong> and <strong>{subjectRemoveInfo.completed_sessions_count} sessions</strong> in <strong>{subjectToRemove}</strong>.
+                                                All that effort is a building block for your future. 😢
+                                            </>
+                                        )}
                                     </p>
                                     <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
                                         <p className="text-sm italic text-amber-500/80">
-                                            "Every hour you've invested in learning is a building block for your future." 🌟
+                                            {subjectRemoveInfo.completed_sessions_count <= 2
+                                                ? "\"The first steps are often the hardest. Your efforts so far are proof of your commitment.\" ✨"
+                                                : "\"Every hour you've invested in learning is a building block for your future.\" 🌟"}
                                         </p>
                                     </div>
                                     <p className="text-sm font-medium text-foreground/80">
                                         Are you absolutely sure you want to remove <strong>{subjectToRemove}</strong>?
                                     </p>
+
+                                    <div className="flex items-start space-x-3 p-3 mt-4 rounded-md bg-destructive/5 border border-destructive/10">
+                                        <Checkbox
+                                            id="purge-history-onboarding"
+                                            checked={purgeHistory}
+                                            onCheckedChange={(checked) => setPurgeHistory(!!checked)}
+                                            className="mt-1"
+                                        />
+                                        <div className="grid gap-1.5 leading-none">
+                                            <Label
+                                                htmlFor="purge-history-onboarding"
+                                                className="text-sm font-semibold text-destructive cursor-pointer"
+                                            >
+                                                Permanently delete all historical progress
+                                            </Label>
+                                            <p className="text-xs text-muted-foreground">
+                                                By default, we keep your XP and completed sessions. Check this to wipe everything for this subject.
+                                                <span className="font-bold text-destructive/80"> This cannot be undone.</span>
+                                            </p>
+                                        </div>
+                                    </div>
                                 </DialogDescription>
                             </DialogHeader>
                             <DialogFooter className="gap-2 sm:gap-0">
                                 <Button variant="outline" onClick={() => {
                                     setSubjectToRemove(null);
                                     setSubjectRemoveInfo(null);
+                                    setPurgeHistory(false);
                                 }}>
                                     Keep Studying 💪
                                 </Button>
@@ -820,7 +858,7 @@ export default function OnboardingSettings({ user, activeEnrollments }: Props) {
                                     variant="destructive"
                                     onClick={() => subjectToRemove && doRemoveSubject(subjectToRemove)}
                                 >
-                                    Remove Anyway 😔
+                                    {purgeHistory ? "Purge & Remove 🚮" : "Remove Anyway 😔"}
                                 </Button>
                             </DialogFooter>
                         </>

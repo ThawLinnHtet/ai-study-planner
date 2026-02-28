@@ -260,15 +260,22 @@ class OnboardingSettingsController extends Controller
             'timezone' => $validated['timezone'],
         ]);
 
+        // Settings-Driven Bypass: Clear rebalance cooldown if core settings changed
+        // This allows the user to re-optimize immediately after updating their preferences.
+        $user->studyPlans()->where('status', 'active')->update(['prevent_rebalance_until' => null]);
+
         // Verify the data was actually saved
         $user->refresh();
 
         // Cleanup removed subjects (Synchronous but fast)
         // MUST happen before AI regeneration and always, regardless of $needsRegeneration
         $subjectsToRemove = array_diff($oldSubjects, $subjects);
+        $purgedSubjects = $request->input('purged_subjects', []);
+
         foreach ($subjectsToRemove as $removedSubject) {
             try {
-                $this->studyPlanService->purgeSubject($user, $removedSubject);
+                $isDeepPurge = in_array($removedSubject, $purgedSubjects);
+                $this->studyPlanService->purgeSubject($user, $removedSubject, $isDeepPurge);
             } catch (\Exception $e) {
                 \Log::warning("Could not purge subject {$removedSubject}: " . $e->getMessage());
             }

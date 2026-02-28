@@ -541,7 +541,13 @@ export default function QuizPracticePage({ subject, topic }: Props) {
                             'X-Requested-With': 'XMLHttpRequest',
                             'X-CSRF-TOKEN': token,
                         },
-                        body: JSON.stringify({ subject, topic, forceNew }),
+                        body: JSON.stringify({
+                            subject,
+                            topic,
+                            forceNew,
+                            learning_path_id: learningPathId,
+                            day_number: dayNumber
+                        }),
                     })
                 );
             }

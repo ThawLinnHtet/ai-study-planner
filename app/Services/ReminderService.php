@@ -139,12 +139,22 @@ class ReminderService
             ->where('status', 'pending')
             ->delete();
 
+        // Dynamic content
+        $variations = [
+            ['title' => '💖 Quiz life refilled!', 'message' => 'New attempts are ready—jump back into practice!'],
+            ['title' => "💖 You're back in the game!", 'message' => "Your energy is back! Let's conquer that quiz now."],
+            ['title' => '💖 Ready for another round?', 'message' => "Don't let your progress stall. A new heart is waiting for you!"],
+            ['title' => '💖 Play hearts restored!', 'message' => "You've got a fresh start. Time to ace those questions!"],
+        ];
+        
+        $choice = $this->pickRandom($variations);
+
         Reminder::create([
             'user_id' => $user->id,
             'type' => 'life_refill',
             'channel' => $user->email_notifications_enabled ? 'both' : 'in_app',
-            'title' => '💖 Quiz life refilled soon',
-            'message' => 'We will ping you when another quiz attempt is ready.',
+            'title' => $choice['title'],
+            'message' => $choice['message'],
             'payload' => [
                 'refill_minutes' => self::LIFE_REFILL_MINUTES,
             ],
@@ -189,12 +199,22 @@ class ReminderService
             return;
         }
 
+        // Dynamic content
+        $variations = [
+            ['title' => "🔥 Don't break your {$streak}-day streak!", 'message' => "You haven't studied today yet. Just one quick session keeps your streak alive!"],
+            ['title' => "🔥 Don't let it slip...", 'message' => "It's not too late! A 5-minute review is all it takes to save your progress."],
+            ['title' => "🔥 Your streak is in danger!", 'message' => "Your {$streak}-day streak is about to expire. Don't let all that hard work go to waste!"],
+            ['title' => "🔥 Keep the fire burning!", 'message' => "Consistency is key. Open the app now and keep your momentum!"],
+        ];
+
+        $choice = $this->pickRandom($variations);
+
         Reminder::create([
             'user_id' => $user->id,
             'type' => 'streak_risk',
             'channel' => $user->email_notifications_enabled ? 'both' : 'in_app',
-            'title' => "🔥 Don't break your {$streak}-day streak!",
-            'message' => "You haven't studied today yet. Just one quick session keeps your streak alive!",
+            'title' => $choice['title'],
+            'message' => $choice['message'],
             'payload' => [
                 'streak' => $streak,
             ],
@@ -226,12 +246,22 @@ class ReminderService
             return;
         }
 
+        // Dynamic content
+        $variations = [
+            ['title' => "📚 {$pendingCount} task" . ($pendingCount > 1 ? 's' : '') . " left today", 'message' => "You still have {$pendingCount} study task" . ($pendingCount > 1 ? 's' : '') . " for today. A quick session can make a big difference!"],
+            ['title' => "🔔 Don't forget your goals!", 'message' => "You've got this! Just {$pendingCount} more tasks to complete your daily goal."],
+            ['title' => "📖 Finish what you started", 'message' => "Ready to cross those last {$pendingCount} items off your list?"],
+            ['title' => "✅ Almost there!", 'message' => "Your plan is waiting. Finish your pending tasks to stay on track."],
+        ];
+
+        $choice = $this->pickRandom($variations);
+
         Reminder::create([
             'user_id' => $user->id,
             'type' => 'tasks_pending',
             'channel' => $user->email_notifications_enabled ? 'both' : 'in_app',
-            'title' => "📚 {$pendingCount} task" . ($pendingCount > 1 ? 's' : '') . " left today",
-            'message' => "You still have {$pendingCount} study task" . ($pendingCount > 1 ? 's' : '') . " for today. A quick session can make a big difference!",
+            'title' => $choice['title'],
+            'message' => $choice['message'],
             'payload' => [
                 'pending_count' => $pendingCount,
             ],
@@ -282,28 +312,12 @@ class ReminderService
                 continue;
             }
 
-            // Send in-app notification
+            // Dispatch notification (Handles Database, Broadcast, and Mail channels internally)
             try {
                 $reminder->user->notify(new \App\Notifications\StudyReminderNotification($reminder));
-                $reminder->markSent();
-                $sentCount++;
-            } catch (\Exception $e) {
-                \Log::error('Failed to send reminder notification', [
-                    'reminder_id' => $reminder->id,
-                    'user_id' => $reminder->user_id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
-
-            // Also send email if channel is 'both' or 'email'
-            if (in_array($reminder->channel, ['both', 'email'])
-                && $reminder->user->email_notifications_enabled
-                && !$reminder->email_sent
-            ) {
-                try {
-                    \Illuminate\Support\Facades\Mail::to($reminder->user->email)
-                        ->queue(new \App\Mail\StudyReminderMail($reminder, $reminder->user->name));
-
+                
+                // Track email stats if the mail channel was likely used
+                if ($reminder->user->email_notifications_enabled && in_array($reminder->channel, ['both', 'email'])) {
                     $reminder->update([
                         'email_sent' => true,
                         'email_sent_at' => now(),
@@ -313,13 +327,16 @@ class ReminderService
                         'last_email_sent_at' => now(),
                         'emails_sent_today' => ($reminder->user->emails_sent_today ?? 0) + 1,
                     ]);
-                } catch (\Exception $e) {
-                    \Log::error('Failed to send reminder email', [
-                        'reminder_id' => $reminder->id,
-                        'user_id' => $reminder->user_id,
-                        'error' => $e->getMessage(),
-                    ]);
                 }
+
+                $reminder->markSent();
+                $sentCount++;
+            } catch (\Exception $e) {
+                \Log::error('Failed to dispatch reminder notification', [
+                    'reminder_id' => $reminder->id,
+                    'user_id' => $reminder->user_id,
+                    'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -345,23 +362,58 @@ class ReminderService
 
     protected function getNudgeTitle(int $streak): string
     {
-        if ($streak >= 7) return "🏆 {$streak}-day streak! Keep it going!";
-        if ($streak >= 3) return "🔥 {$streak} days strong!";
-        if ($streak >= 1) return "📖 Time to study!";
-        return "👋 Ready to learn today?";
+        $titles = match(true) {
+            $streak >= 7 => [
+                "🏆 {$streak}-day streak! Legend status!",
+                "🏆 Keep the momentum going!",
+                "🏆 Seven days and counting... unstoppable!",
+            ],
+            $streak >= 3 => [
+                "🔥 {$streak} days strong!",
+                "🔥 Building a great habit!",
+                "🔥 Don't stop now, you're on a roll!",
+            ],
+            $streak >= 1 => [
+                "📖 Time for a quick review?",
+                "📖 Stay on your streak!",
+                "📖 Your brain misses you!",
+            ],
+            default => [
+                "👋 Ready to learn today?",
+                "👋 Let's start a new streak!",
+                "👋 Make today count!",
+            ],
+        };
+
+        return $this->pickRandom($titles);
     }
 
     protected function getNudgeMessage(int $streak, User $user): string
     {
-        if ($streak >= 7) {
-            return "Amazing! You've been studying for {$streak} days straight. One session today keeps the progress going!";
-        }
-        if ($streak >= 3) {
-            return "You're building a great habit! Don't break your {$streak}-day streak—just 15 minutes today.";
-        }
-        if ($streak >= 1) {
-            return "You studied yesterday—keep the progress! A quick review session goes a long way.";
-        }
-        return "Start your study journey today. Even a short session helps build lasting knowledge.";
+        $messages = match(true) {
+            $streak >= 7 => [
+                "Amazing! You've been studying for {$streak} days straight. One session today keeps the progress going!",
+                "Consistency is your superpower. Let's make it day " . ($streak + 1) . "!",
+            ],
+            $streak >= 3 => [
+                "You're building a great habit! Don't break your {$streak}-day streak—just 15 minutes today.",
+                "You're in the zone. A quick session today will solidify what you've learned.",
+            ],
+            $streak >= 1 => [
+                "You studied yesterday—keep the progress! A quick review session goes a long way.",
+                "Small steps every day lead to big results. What will you learn today?",
+            ],
+            default => [
+                "Start your study journey today. Even a short session helps build lasting knowledge.",
+                "The best time to start was yesterday. The second best time is now!",
+            ],
+        };
+
+        return $this->pickRandom($messages);
+    }
+
+    protected function pickRandom(array $items): mixed
+    {
+        return $items[array_rand($items)];
     }
 }

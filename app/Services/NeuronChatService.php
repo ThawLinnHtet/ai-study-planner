@@ -195,7 +195,7 @@ class NeuronChatService
             'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
             'messages' => $messages,
             'temperature' => 0.4,
-            'max_tokens' => 200,
+            'max_tokens' => 2000,
             'stream' => true,
         ];
 
@@ -331,7 +331,7 @@ class NeuronChatService
             'model' => config('services.openrouter.model', 'google/gemini-2.0-flash-001'),
             'messages' => $messages,
             'temperature' => 0.4,
-            'max_tokens' => 200,
+            'max_tokens' => 2000,
             'stream' => false,
         ];
 
